@@ -428,19 +428,6 @@
 <!-- ── SETUP ── -->
 <div id="setup">
 
-  <!-- API Key -->
-  <div class="card">
-    <div class="card-label">Google AI Studio API Key</div>
-    <div class="api-row">
-      <input type="password" id="apiKey" placeholder="AIza..." autocomplete="off">
-      <button class="btn btn-ghost" onclick="toggleKey()">Show</button>
-    </div>
-    <p class="hint">
-      Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a>.
-      Your key is saved only in this browser — never sent anywhere except Google.
-    </p>
-  </div>
-
   <!-- Upload -->
   <div class="card">
     <div class="card-label">Load a Book</div>
@@ -501,12 +488,8 @@
   <div class="settings-row">
     <div class="setting-chip">
       <label>Voice</label>
-      <select id="voiceSelect">
-        <option value="Aoede">Aoede (warm)</option>
-        <option value="Charon">Charon (deep)</option>
-        <option value="Fenrir">Fenrir (neutral)</option>
-        <option value="Kore">Kore (clear)</option>
-        <option value="Puck">Puck (bright)</option>
+      <select id="voiceSelect" onchange="updateVoice()">
+        <option value="">Loading voices…</option>
       </select>
     </div>
     <div class="setting-chip">
@@ -553,20 +536,48 @@ if (typeof pdfjsLib !== 'undefined') {
 
 // ── State ──
 let chunks       = [];
-let chunkAudios  = [];  // cached AudioBuffers
 let currentChunk = 0;
 let isPlaying    = false;
-let audioCtx     = null;
-let currentSource= null;
 let bookName     = 'Book';
 let playbackRate = 1;
-let chunkStartTime = 0;    // audioCtx.currentTime when chunk started
-let chunkDuration  = 0;    // duration of current chunk audio
+let selectedVoice= null;
+let utterance    = null;
+let waveInterval = null;
 
-// ── Persist API key ──
+// ── Web Speech API: load voices ──
+function loadVoices() {
+  const sel = document.getElementById('voiceSelect');
+  let voices = speechSynthesis.getVoices();
+  if (!voices.length) return; // not ready yet
+
+  // Prefer English voices, put them first
+  const en = voices.filter(v => v.lang.startsWith('en'));
+  const rest = voices.filter(v => !v.lang.startsWith('en'));
+  voices = [...en, ...rest];
+
+  sel.innerHTML = '';
+  voices.forEach((v, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = `${v.name} (${v.lang})`;
+    if (v.default) opt.selected = true;
+    sel.appendChild(opt);
+  });
+
+  // Restore saved preference
+  const saved = localStorage.getItem('narrator_voice');
+  if (saved) {
+    const match = voices.findIndex(v => v.name === saved);
+    if (match >= 0) sel.value = match;
+  }
+
+  selectedVoice = voices[parseInt(sel.value) || 0];
+}
+
+// voices load async — fire on event and on load
+speechSynthesis.addEventListener('voiceschanged', loadVoices);
 window.addEventListener('load', () => {
-  const saved = localStorage.getItem('narrator_api_key');
-  if (saved) document.getElementById('apiKey').value = saved;
+  loadVoices();
   const savedBook = localStorage.getItem('narrator_book');
   if (savedBook) {
     try {
@@ -579,17 +590,11 @@ window.addEventListener('load', () => {
   }
 });
 
-function toggleKey() {
-  const inp = document.getElementById('apiKey');
-  const btn = event.target;
-  if (inp.type === 'password') { inp.type = 'text'; btn.textContent = 'Hide'; }
-  else { inp.type = 'password'; btn.textContent = 'Show'; }
-}
-
-function getKey() {
-  const k = document.getElementById('apiKey').value.trim();
-  if (k) localStorage.setItem('narrator_api_key', k);
-  return k;
+function updateVoice() {
+  const sel = document.getElementById('voiceSelect');
+  const voices = speechSynthesis.getVoices();
+  selectedVoice = voices[parseInt(sel.value)];
+  if (selectedVoice) localStorage.setItem('narrator_voice', selectedVoice.name);
 }
 
 // ── Drag & Drop ──
@@ -639,21 +644,13 @@ async function extractPDF(file) {
 }
 
 async function extractEpub(file) {
-  // Parse ePub as ZIP, extract text from HTML files
   const ab = await file.arrayBuffer();
-  const bytes = new Uint8Array(ab);
-
-  // Simple approach: find all readable text between tags
   const decoder = new TextDecoder('utf-8', { fatal: false });
-  const raw = decoder.decode(bytes);
-
-  // Pull text-like content from the binary
+  const raw = decoder.decode(ab);
   const chunks_raw = raw.match(/[\x20-\x7E\n\r\t]{40,}/g) || [];
   let text = chunks_raw
     .filter(s => !s.includes('<?xml') && !s.includes('<html') && !/^[A-Z0-9+/=]{40,}$/.test(s))
     .join('\n');
-
-  // Strip any remaining HTML tags
   text = text.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
   return text;
 }
@@ -664,20 +661,17 @@ async function loadFromUrl() {
 
   showLoading('Fetching book…');
   try {
-    // Use a CORS proxy for gutenberg plain text
     const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
     const res = await fetch(proxyUrl);
     if (!res.ok) throw new Error('Network error');
     const data = await res.json();
     let text = data.contents;
 
-    // If it's HTML, strip tags
     if (text.trim().startsWith('<')) {
       const doc = new DOMParser().parseFromString(text, 'text/html');
       text = doc.body ? doc.body.innerText : text.replace(/<[^>]+>/g,' ');
     }
 
-    // Derive a name from URL
     bookName = url.split('/').pop().replace(/[-_]/g,' ').replace(/\.[^.]*$/,'') || 'Book';
     processText(text);
   } catch(e) {
@@ -690,22 +684,17 @@ async function loadFromUrl() {
 function processText(rawText) {
   showLoading('Processing text…');
 
-  // Clean up Project Gutenberg headers/footers
-  let text = rawText
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n');
+  let text = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-  // Remove PG boilerplate (heuristic: strip everything before "START OF" and after "END OF")
   const startMatch = text.match(/\*{3}\s*START OF (THIS|THE) PROJECT GUTENBERG/i);
   const endMatch   = text.match(/\*{3}\s*END OF (THIS|THE) PROJECT GUTENBERG/i);
   if (startMatch) text = text.slice(startMatch.index + startMatch[0].length);
   if (endMatch)   text = text.slice(0, text.indexOf(endMatch[0]));
 
-  // Collapse excessive blank lines
   text = text.replace(/\n{3,}/g, '\n\n').trim();
 
-  // Split into ~1500-char chunks at paragraph boundaries
-  const TARGET = 1500;
+  // Split into ~800-char chunks (Web Speech works better with shorter segments)
+  const TARGET = 800;
   const paragraphs = text.split(/\n\n+/);
   const result = [];
   let current = '';
@@ -730,27 +719,22 @@ function processText(rawText) {
     return;
   }
 
-  // Save to localStorage
   try {
     localStorage.setItem('narrator_book', JSON.stringify({ chunks, name: bookName }));
     localStorage.setItem('narrator_position', '0');
-  } catch(e) { /* storage full – continue without saving */ }
+  } catch(e) {}
 
   currentChunk = 0;
-  chunkAudios  = new Array(chunks.length).fill(null);
   hideLoading();
   buildPlayer();
 }
 
 // ── Build Player ──
 function buildPlayer() {
-  chunkAudios = chunkAudios || new Array(chunks.length).fill(null);
   document.getElementById('setup').style.display = 'none';
   document.getElementById('player').style.display = 'flex';
-
   document.getElementById('bookTitle').textContent = formatTitle(bookName);
   document.getElementById('bookSubtitle').textContent = `${chunks.length} sections`;
-
   buildWaveform();
   buildChunkList();
   updateChunkDisplay();
@@ -785,17 +769,15 @@ function updateWaveform() {
 
   bars.forEach((bar, i) => {
     bar.classList.remove('played','active');
-    if (i < played - 1) bar.classList.add('played');
+    if (i < played) bar.classList.add('played');
     else if (i === played && isPlaying) bar.classList.add('active');
-    else if (i < played) bar.classList.add('played');
   });
 }
 
 function seekByWave(e) {
   const wf = document.getElementById('waveform');
   const ratio = e.offsetX / wf.offsetWidth;
-  const target = Math.floor(ratio * chunks.length);
-  jumpToChunk(target);
+  jumpToChunk(Math.floor(ratio * chunks.length));
 }
 
 // ── Chunk List ──
@@ -805,7 +787,6 @@ function buildChunkList() {
   chunks.forEach((chunk, i) => {
     const item = document.createElement('div');
     item.className = 'chunk-item' + (i === currentChunk ? ' active' : '');
-    item.dataset.idx = i;
     item.onclick = () => jumpToChunk(i);
 
     const num = document.createElement('span');
@@ -822,154 +803,90 @@ function buildChunkList() {
 }
 
 function updateChunkDisplay() {
-  // Update chunk list active state
   document.querySelectorAll('.chunk-item').forEach((el, i) => {
     el.classList.toggle('active', i === currentChunk);
   });
-  // Scroll into view
   const active = document.querySelector('.chunk-item.active');
   if (active) active.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-
-  document.getElementById('chunkProgress').textContent =
-    `Section ${currentChunk + 1} of ${chunks.length}`;
-
+  document.getElementById('chunkProgress').textContent = `Section ${currentChunk + 1} of ${chunks.length}`;
   updateWaveform();
   localStorage.setItem('narrator_position', currentChunk);
 }
 
-// ── Audio ──
-function getAudioCtx() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  return audioCtx;
-}
-
-async function fetchChunkAudio(idx) {
-  if (chunkAudios[idx]) return chunkAudios[idx];
-
-  const key   = getKey();
-  if (!key) throw new Error('No API key set.');
-
-  const voice = document.getElementById('voiceSelect').value;
-  const text  = chunks[idx];
-
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${key}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text }] }],
-        generationConfig: {
-          responseModalities: ['AUDIO'],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: voice }
-            }
-          }
-        }
-      })
-    }
-  );
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `API error ${response.status}`);
+// ── Speech Synthesis ──
+function speakChunk(idx) {
+  if (idx >= chunks.length) {
+    stopPlayback();
+    setStatus('Finished — reached end of book');
+    return;
   }
 
-  const data = await response.json();
-  const b64  = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  if (!b64) throw new Error('No audio in API response. Check your API key and quota.');
+  speechSynthesis.cancel(); // clear queue
 
-  // b64 → ArrayBuffer → decode
-  const raw  = atob(b64);
-  const buf  = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i);
-
-  const ctx    = getAudioCtx();
-  const decoded= await ctx.decodeAudioData(buf.buffer);
-  chunkAudios[idx] = decoded;
-  return decoded;
-}
-
-async function playChunk(idx) {
-  if (idx >= chunks.length) { stopPlayback(); return; }
-
-  isPlaying    = true;
   currentChunk = idx;
+  isPlaying = true;
   updateChunkDisplay();
   updatePlayBtn();
-  setStatus(`Loading section ${idx + 1}…`);
+  setStatus(`Playing section ${idx + 1} of ${chunks.length}`);
 
-  try {
-    const buffer = await fetchChunkAudio(idx);
-    if (!isPlaying) return; // stopped while loading
+  utterance = new SpeechSynthesisUtterance(chunks[idx]);
 
-    const ctx = getAudioCtx();
-    if (ctx.state === 'suspended') await ctx.resume();
+  // Apply voice
+  const voices = speechSynthesis.getVoices();
+  const sel = document.getElementById('voiceSelect');
+  const v = voices[parseInt(sel.value)];
+  if (v) utterance.voice = v;
 
-    // Stop previous
-    if (currentSource) { try { currentSource.stop(); } catch(e){} }
+  utterance.rate = playbackRate;
+  utterance.pitch = 1;
 
-    const source = ctx.createBufferSource();
-    source.buffer       = buffer;
-    source.playbackRate.value = playbackRate;
-    source.connect(ctx.destination);
+  utterance.onend = () => {
+    if (isPlaying) speakChunk(idx + 1);
+  };
 
-    chunkStartTime = ctx.currentTime;
-    chunkDuration  = buffer.duration;
-
-    source.onended = () => {
-      if (isPlaying) playChunk(idx + 1);
-    };
-    source.start(0);
-    currentSource = source;
-
-    // Pre-fetch next chunk
-    if (idx + 1 < chunks.length) fetchChunkAudio(idx + 1).catch(()=>{});
-
-    setStatus(`Playing section ${idx + 1} of ${chunks.length}`);
-    startTimeUpdate();
-  } catch(e) {
-    showError(e.message);
+  utterance.onerror = (e) => {
+    if (e.error === 'interrupted' || e.error === 'canceled') return;
+    showError('Speech error: ' + e.error);
     isPlaying = false;
     updatePlayBtn();
-    setStatus('Error — check API key');
-  }
+  };
+
+  // Kick off waveform animation
+  clearInterval(waveInterval);
+  waveInterval = setInterval(updateWaveform, 600);
+
+  speechSynthesis.speak(utterance);
+
+  // iOS Safari workaround: speechSynthesis can stall; resume every 10s
+  keepAlive();
 }
 
-let timeInterval = null;
-function startTimeUpdate() {
-  clearInterval(timeInterval);
-  timeInterval = setInterval(() => {
-    if (!isPlaying || !audioCtx) return;
-    const elapsed = (audioCtx.currentTime - chunkStartTime) * playbackRate;
-    const remaining = Math.max(0, chunkDuration / playbackRate - elapsed);
-    document.getElementById('timeDisplay').textContent = formatTime(remaining) + ' left';
-    updateWaveform();
-  }, 500);
-}
-
-function formatTime(secs) {
-  const m = Math.floor(secs / 60);
-  const s = Math.floor(secs % 60);
-  return `${m}:${s.toString().padStart(2,'0')}`;
+// iOS keepalive — Safari pauses synthesis after ~15s
+let keepAliveTimer = null;
+function keepAlive() {
+  clearInterval(keepAliveTimer);
+  keepAliveTimer = setInterval(() => {
+    if (!isPlaying) { clearInterval(keepAliveTimer); return; }
+    if (speechSynthesis.paused) speechSynthesis.resume();
+  }, 10000);
 }
 
 function stopPlayback() {
   isPlaying = false;
-  if (currentSource) { try { currentSource.stop(); } catch(e){} currentSource = null; }
-  clearInterval(timeInterval);
+  speechSynthesis.cancel();
+  clearInterval(waveInterval);
+  clearInterval(keepAliveTimer);
   updatePlayBtn();
   updateWaveform();
+  document.getElementById('timeDisplay').textContent = '—';
   setStatus('Paused');
 }
 
-async function togglePlay() {
+function togglePlay() {
   if (isPlaying) {
     stopPlayback();
   } else {
-    if (!getKey()) { showError('Please enter your Google AI Studio API key first.'); return; }
-    await playChunk(currentChunk);
+    speakChunk(currentChunk);
   }
 }
 
@@ -978,7 +895,7 @@ function skipChunk(delta) {
   stopPlayback();
   currentChunk = Math.max(0, Math.min(chunks.length - 1, currentChunk + delta));
   updateChunkDisplay();
-  if (was) playChunk(currentChunk);
+  if (was) speakChunk(currentChunk);
 }
 
 function jumpToChunk(idx) {
@@ -986,19 +903,21 @@ function jumpToChunk(idx) {
   stopPlayback();
   currentChunk = idx;
   updateChunkDisplay();
-  if (was) playChunk(currentChunk);
+  if (was) speakChunk(currentChunk);
 }
 
 function updatePlayBtn() {
   const icon = document.getElementById('playIcon');
   icon.innerHTML = isPlaying
-    ? '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>'  // pause
-    : '<path d="M8 5v14l11-7z"/>';                      // play
+    ? '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>'
+    : '<path d="M8 5v14l11-7z"/>';
 }
 
 function updateSpeed() {
   playbackRate = parseFloat(document.getElementById('speedSelect').value);
-  if (currentSource) currentSource.playbackRate.value = playbackRate;
+  if (utterance) utterance.rate = playbackRate;
+  // Restart current chunk at new speed if playing
+  if (isPlaying) speakChunk(currentChunk);
 }
 
 // ── UI Helpers ──
@@ -1013,7 +932,7 @@ function showError(msg) {
   const box = document.getElementById('errorBox');
   box.textContent = msg;
   box.style.display = 'block';
-  setTimeout(() => box.style.display = 'none', 6000);
+  setTimeout(() => box.style.display = 'none', 7000);
 }
 function setStatus(msg) {
   document.getElementById('statusBar').textContent = msg;
@@ -1021,7 +940,7 @@ function setStatus(msg) {
 
 function resetApp() {
   stopPlayback();
-  chunks = []; chunkAudios = []; currentChunk = 0;
+  chunks = []; currentChunk = 0;
   localStorage.removeItem('narrator_book');
   localStorage.removeItem('narrator_position');
   document.getElementById('player').style.display = 'none';
