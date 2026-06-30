@@ -1,954 +1,941 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Narrator — Personal Audiobook</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Inter:wght@300;400;500;600&display=swap');
-
-  :root {
-    --bg:        #0d1117;
-    --surface:   #161b22;
-    --surface2:  #21262d;
-    --amber:     #f0a832;
-    --amber-dim: #7a5418;
-    --text:      #e6edf3;
-    --text-muted:#8b949e;
-    --danger:    #f85149;
-    --radius:    14px;
-  }
-
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Inter', sans-serif;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 0 0 60px 0;
-  }
-
-  /* ── Header ── */
-  header {
-    width: 100%;
-    padding: 20px 24px 16px;
-    border-bottom: 1px solid var(--surface2);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .logo-mark {
-    width: 36px; height: 36px;
-    background: var(--amber);
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-  }
-  .logo-mark svg { width: 20px; height: 20px; fill: #0d1117; }
-  h1 {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.4rem;
-    font-weight: 700;
-    color: var(--text);
-    letter-spacing: -0.02em;
-  }
-  h1 span { color: var(--amber); }
-
-  /* ── Setup Panel ── */
-  #setup {
-    width: 100%;
-    max-width: 600px;
-    padding: 24px 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-  }
-
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--surface2);
-    border-radius: var(--radius);
-    padding: 20px;
-  }
-
-  .card-label {
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--amber);
-    margin-bottom: 12px;
-  }
-
-  .api-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-
-  input[type="text"], input[type="password"], input[type="url"] {
-    width: 100%;
-    background: var(--bg);
-    border: 1px solid var(--surface2);
-    border-radius: 8px;
-    padding: 12px 14px;
-    color: var(--text);
-    font-size: 0.95rem;
-    font-family: 'Inter', sans-serif;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  input:focus { border-color: var(--amber); }
-  input::placeholder { color: var(--text-muted); }
-
-  .hint {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    margin-top: 8px;
-    line-height: 1.5;
-  }
-  .hint a { color: var(--amber); text-decoration: none; }
-
-  /* ── Divider ── */
-  .or-divider {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    color: var(--text-muted);
-    font-size: 0.8rem;
-  }
-  .or-divider::before, .or-divider::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--surface2);
-  }
-
-  /* ── Upload Zone ── */
-  .upload-zone {
-    border: 2px dashed var(--surface2);
-    border-radius: 10px;
-    padding: 28px 20px;
-    text-align: center;
-    cursor: pointer;
-    transition: border-color 0.2s, background 0.2s;
-    position: relative;
-  }
-  .upload-zone:hover, .upload-zone.drag-over {
-    border-color: var(--amber);
-    background: rgba(240,168,50,0.05);
-  }
-  .upload-zone input[type="file"] {
-    position: absolute; inset: 0;
-    opacity: 0; cursor: pointer;
-    width: 100%; height: 100%;
-  }
-  .upload-icon { font-size: 2rem; margin-bottom: 8px; }
-  .upload-zone p { color: var(--text-muted); font-size: 0.9rem; }
-  .upload-zone strong { color: var(--text); }
-
-  /* ── Buttons ── */
-  .btn {
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    padding: 14px 20px;
-    border-radius: 10px;
-    border: none;
-    font-family: 'Inter', sans-serif;
-    font-size: 0.95rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.18s;
-    white-space: nowrap;
-  }
-  .btn-primary {
-    background: var(--amber);
-    color: #0d1117;
-    width: 100%;
-  }
-  .btn-primary:hover { background: #f7bc5a; }
-  .btn-primary:disabled { background: var(--amber-dim); color: #555; cursor: not-allowed; }
-
-  .btn-ghost {
-    background: var(--surface2);
-    color: var(--text);
-    font-size: 0.85rem;
-    padding: 10px 14px;
-  }
-  .btn-ghost:hover { background: #2d333b; }
-
-  /* ── Error ── */
-  .error-box {
-    background: rgba(248,81,73,0.1);
-    border: 1px solid rgba(248,81,73,0.3);
-    border-radius: 8px;
-    padding: 12px 14px;
-    color: var(--danger);
-    font-size: 0.88rem;
-    display: none;
-  }
-
-  /* ── Player ── */
-  #player {
-    display: none;
-    width: 100%;
-    max-width: 600px;
-    padding: 20px;
-    flex-direction: column;
-    gap: 20px;
-  }
-
-  .book-meta {
-    text-align: center;
-    padding: 8px 0;
-  }
-  .book-title {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--text);
-    line-height: 1.3;
-    margin-bottom: 4px;
-  }
-  .book-subtitle {
-    color: var(--text-muted);
-    font-size: 0.85rem;
-  }
-
-  /* ── Waveform / Progress ── */
-  .waveform-wrap {
-    background: var(--surface);
-    border: 1px solid var(--surface2);
-    border-radius: var(--radius);
-    padding: 20px;
-  }
-  .waveform {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-    height: 48px;
-    margin-bottom: 14px;
-    cursor: pointer;
-  }
-  .wave-bar {
-    flex: 1;
-    background: var(--surface2);
-    border-radius: 2px;
-    transition: background 0.2s, height 0.15s;
-    min-height: 4px;
-  }
-  .wave-bar.played { background: var(--amber); }
-  .wave-bar.active { background: var(--amber); animation: pulse 0.6s ease-in-out infinite alternate; }
-
-  @keyframes pulse {
-    from { transform: scaleY(0.7); }
-    to   { transform: scaleY(1.3); }
-  }
-
-  .progress-row {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* ── Controls ── */
-  .controls {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    margin-top: 4px;
-  }
-  .ctrl-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--text-muted);
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 50%;
-    width: 44px; height: 44px;
-    transition: color 0.18s, background 0.18s;
-    flex-shrink: 0;
-  }
-  .ctrl-btn:hover { color: var(--text); background: var(--surface2); }
-  .ctrl-btn svg { width: 22px; height: 22px; fill: currentColor; }
-
-  .play-btn {
-    width: 64px; height: 64px;
-    background: var(--amber);
-    color: #0d1117;
-    border-radius: 50%;
-  }
-  .play-btn:hover { background: #f7bc5a; color: #0d1117; }
-  .play-btn svg { width: 28px; height: 28px; }
-
-  /* ── Speed & Voice ── */
-  .settings-row {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .setting-chip {
-    flex: 1;
-    min-width: 120px;
-    background: var(--surface);
-    border: 1px solid var(--surface2);
-    border-radius: 10px;
-    padding: 12px 14px;
-  }
-  .setting-chip label {
-    display: block;
-    font-size: 0.68rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--amber);
-    margin-bottom: 6px;
-  }
-  .setting-chip select {
-    width: 100%;
-    background: none;
-    border: none;
-    color: var(--text);
-    font-family: 'Inter', sans-serif;
-    font-size: 0.9rem;
-    outline: none;
-    cursor: pointer;
-    appearance: none;
-  }
-
-  /* ── Chapter Nav ── */
-  .chunk-nav {
-    background: var(--surface);
-    border: 1px solid var(--surface2);
-    border-radius: var(--radius);
-    padding: 16px;
-  }
-  .chunk-nav-label {
-    font-size: 0.68rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--amber);
-    margin-bottom: 10px;
-  }
-  .chunk-list {
-    max-height: 180px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .chunk-list::-webkit-scrollbar { width: 4px; }
-  .chunk-list::-webkit-scrollbar-track { background: var(--bg); }
-  .chunk-list::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 2px; }
-
-  .chunk-item {
-    padding: 8px 10px;
-    border-radius: 6px;
-    font-size: 0.82rem;
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .chunk-item:hover { background: var(--surface2); color: var(--text); }
-  .chunk-item.active { background: rgba(240,168,50,0.12); color: var(--amber); }
-  .chunk-num {
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    min-width: 22px;
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* ── Loading ── */
-  .loading-overlay {
-    display: none;
-    position: fixed; inset: 0;
-    background: rgba(13,17,23,0.85);
-    backdrop-filter: blur(4px);
-    z-index: 100;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-  }
-  .loading-overlay.show { display: flex; }
-  .spinner {
-    width: 40px; height: 40px;
-    border: 3px solid var(--surface2);
-    border-top-color: var(--amber);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .loading-text { color: var(--text-muted); font-size: 0.9rem; }
-
-  /* ── Status Bar ── */
-  .status-bar {
-    position: fixed;
-    bottom: 0; left: 0; right: 0;
-    background: var(--surface);
-    border-top: 1px solid var(--surface2);
-    padding: 10px 20px;
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    text-align: center;
-    z-index: 50;
-  }
-
-  /* ── Reset ── */
-  .reset-row {
-    display: flex;
-    justify-content: center;
-  }
-
-  @media (max-width: 400px) {
-    .settings-row { flex-direction: column; }
-  }
-</style>
-</head>
-<body>
-
-<header>
-  <div class="logo-mark">
-    <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18A9 9 0 0 0 12 3zm0 2a7 7 0 1 1 0 14A7 7 0 0 1 12 5zm-1 3v5l4 2.5-.75 1.23L10 14V8h1z"/></svg>
-  </div>
-  <h1>Narr<span>a</span>tor</h1>
-</header>
-
-<!-- ── SETUP ── -->
-<div id="setup">
-
-  <!-- Upload -->
-  <div class="card">
-    <div class="card-label">Load a Book</div>
-
-    <div class="upload-zone" id="uploadZone">
-      <input type="file" id="fileInput" accept=".pdf,.epub,.txt" onchange="handleFile(this.files[0])">
-      <div class="upload-icon">📖</div>
-      <p><strong>Tap to choose a file</strong></p>
-      <p style="margin-top:4px">PDF, ePub, or plain text</p>
-    </div>
-
-    <div class="or-divider" style="margin: 16px 0;">or paste a URL</div>
-
-    <input type="url" id="bookUrl" placeholder="https://www.gutenberg.org/files/1342/1342-0.txt">
-    <p class="hint">
-      Works with plain-text Project Gutenberg links (right-click a book → "Plain Text UTF-8" → copy link).
-    </p>
-    <div style="margin-top: 12px;">
-      <button class="btn btn-primary" onclick="loadFromUrl()">Load from URL</button>
-    </div>
-  </div>
-
-  <div class="error-box" id="errorBox"></div>
-
-</div>
-
-<!-- ── PLAYER ── -->
-<div id="player">
-
-  <div class="book-meta">
-    <div class="book-title" id="bookTitle">Loading…</div>
-    <div class="book-subtitle" id="bookSubtitle"></div>
-  </div>
-
-  <!-- Waveform -->
-  <div class="waveform-wrap">
-    <div class="waveform" id="waveform" onclick="seekByWave(event)"></div>
-    <div class="progress-row">
-      <span id="chunkProgress">Section 0 of 0</span>
-      <span id="timeDisplay">—</span>
-    </div>
-
-    <!-- Controls -->
-    <div class="controls" style="margin-top:18px">
-      <button class="ctrl-btn" onclick="skipChunk(-1)" title="Previous section">
-        <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
-      </button>
-      <button class="ctrl-btn play-btn" id="playBtn" onclick="togglePlay()">
-        <svg id="playIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-      </button>
-      <button class="ctrl-btn" onclick="skipChunk(1)" title="Next section">
-        <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zm2-8.14 5.65 3.64L8 18.14V9.86zM16 6h2v12h-2z"/></svg>
-      </button>
-    </div>
-  </div>
-
-  <!-- Settings -->
-  <div class="settings-row">
-    <div class="setting-chip">
-      <label>Voice</label>
-      <select id="voiceSelect" onchange="updateVoice()">
-        <option value="">Loading voices…</option>
-      </select>
-    </div>
-    <div class="setting-chip">
-      <label>Playback Speed</label>
-      <select id="speedSelect" onchange="updateSpeed()">
-        <option value="0.75">0.75×</option>
-        <option value="1" selected>1×</option>
-        <option value="1.25">1.25×</option>
-        <option value="1.5">1.5×</option>
-        <option value="1.75">1.75×</option>
-        <option value="2">2×</option>
-      </select>
-    </div>
-  </div>
-
-  <!-- Section List -->
-  <div class="chunk-nav">
-    <div class="chunk-nav-label">Sections</div>
-    <div class="chunk-list" id="chunkList"></div>
-  </div>
-
-  <!-- Reset -->
-  <div class="reset-row">
-    <button class="btn btn-ghost" onclick="resetApp()" style="width:100%">← Load a different book</button>
-  </div>
-
-</div>
-
-<!-- ── Loading Overlay ── -->
-<div class="loading-overlay" id="loadingOverlay">
-  <div class="spinner"></div>
-  <div class="loading-text" id="loadingText">Reading book…</div>
-</div>
-
-<!-- ── Status Bar ── -->
-<div class="status-bar" id="statusBar">Ready — load a book to begin</div>
-
-<script>
-// ── pdfjsLib setup ──
-if (typeof pdfjsLib !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc =
-    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-}
-
-// ── State ──
-let chunks       = [];
-let currentChunk = 0;
-let isPlaying    = false;
-let bookName     = 'Book';
-let playbackRate = 1;
-let selectedVoice= null;
-let utterance    = null;
-let waveInterval = null;
-
-// ── Web Speech API: load voices ──
-function loadVoices() {
-  const sel = document.getElementById('voiceSelect');
-  let voices = speechSynthesis.getVoices();
-  if (!voices.length) return; // not ready yet
-
-  // Prefer English voices, put them first
-  const en = voices.filter(v => v.lang.startsWith('en'));
-  const rest = voices.filter(v => !v.lang.startsWith('en'));
-  voices = [...en, ...rest];
-
-  sel.innerHTML = '';
-  voices.forEach((v, i) => {
-    const opt = document.createElement('option');
-    opt.value = i;
-    opt.textContent = `${v.name} (${v.lang})`;
-    if (v.default) opt.selected = true;
-    sel.appendChild(opt);
-  });
-
-  // Restore saved preference
-  const saved = localStorage.getItem('narrator_voice');
-  if (saved) {
-    const match = voices.findIndex(v => v.name === saved);
-    if (match >= 0) sel.value = match;
-  }
-
-  selectedVoice = voices[parseInt(sel.value) || 0];
-}
-
-// voices load async — fire on event and on load
-speechSynthesis.addEventListener('voiceschanged', loadVoices);
-window.addEventListener('load', () => {
-  loadVoices();
-  const savedBook = localStorage.getItem('narrator_book');
-  if (savedBook) {
-    try {
-      const b = JSON.parse(savedBook);
-      chunks   = b.chunks;
-      bookName = b.name;
-      currentChunk = parseInt(localStorage.getItem('narrator_position') || '0');
-      buildPlayer();
-    } catch(e) { localStorage.removeItem('narrator_book'); }
-  }
-});
-
-function updateVoice() {
-  const sel = document.getElementById('voiceSelect');
-  const voices = speechSynthesis.getVoices();
-  selectedVoice = voices[parseInt(sel.value)];
-  if (selectedVoice) localStorage.setItem('narrator_voice', selectedVoice.name);
-}
-
-// ── Drag & Drop ──
-const zone = document.getElementById('uploadZone');
-zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
-zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-zone.addEventListener('drop', e => {
-  e.preventDefault(); zone.classList.remove('drag-over');
-  const f = e.dataTransfer.files[0];
-  if (f) handleFile(f);
-});
-
-// ── File Handling ──
-async function handleFile(file) {
-  if (!file) return;
-  showLoading('Reading file…');
-  try {
-    let text = '';
-    const ext = file.name.split('.').pop().toLowerCase();
-    bookName = file.name.replace(/\.[^.]+$/, '');
-
-    if (ext === 'pdf') {
-      text = await extractPDF(file);
-    } else if (ext === 'epub') {
-      text = await extractEpub(file);
-    } else {
-      text = await file.text();
-    }
-
-    processText(text);
-  } catch(e) {
-    showError('Could not read file: ' + e.message);
-    hideLoading();
-  }
-}
-
-async function extractPDF(file) {
-  const ab = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
-  let text = '';
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    text += content.items.map(s => s.str).join(' ') + '\n';
-  }
-  return text;
-}
-
-async function extractEpub(file) {
-  const ab = await file.arrayBuffer();
-  const decoder = new TextDecoder('utf-8', { fatal: false });
-  const raw = decoder.decode(ab);
-  const chunks_raw = raw.match(/[\x20-\x7E\n\r\t]{40,}/g) || [];
-  let text = chunks_raw
-    .filter(s => !s.includes('<?xml') && !s.includes('<html') && !/^[A-Z0-9+/=]{40,}$/.test(s))
-    .join('\n');
-  text = text.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
-  return text;
-}
-
-async function loadFromUrl() {
-  const url = document.getElementById('bookUrl').value.trim();
-  if (!url) { showError('Please enter a URL.'); return; }
-
-  showLoading('Fetching book…');
-  try {
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-    const res = await fetch(proxyUrl);
-    if (!res.ok) throw new Error('Network error');
-    const data = await res.json();
-    let text = data.contents;
-
-    if (text.trim().startsWith('<')) {
-      const doc = new DOMParser().parseFromString(text, 'text/html');
-      text = doc.body ? doc.body.innerText : text.replace(/<[^>]+>/g,' ');
-    }
-
-    bookName = url.split('/').pop().replace(/[-_]/g,' ').replace(/\.[^.]*$/,'') || 'Book';
-    processText(text);
-  } catch(e) {
-    showError('Could not fetch URL. Try downloading the file and uploading it instead. (' + e.message + ')');
-    hideLoading();
-  }
-}
-
-// ── Text Processing ──
-function processText(rawText) {
-  showLoading('Processing text…');
-
-  let text = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-
-  const startMatch = text.match(/\*{3}\s*START OF (THIS|THE) PROJECT GUTENBERG/i);
-  const endMatch   = text.match(/\*{3}\s*END OF (THIS|THE) PROJECT GUTENBERG/i);
-  if (startMatch) text = text.slice(startMatch.index + startMatch[0].length);
-  if (endMatch)   text = text.slice(0, text.indexOf(endMatch[0]));
-
-  text = text.replace(/\n{3,}/g, '\n\n').trim();
-
-  // Split into ~800-char chunks (Web Speech works better with shorter segments)
-  const TARGET = 800;
-  const paragraphs = text.split(/\n\n+/);
-  const result = [];
-  let current = '';
-
-  for (const para of paragraphs) {
-    const p = para.trim();
-    if (!p) continue;
-    if ((current + '\n\n' + p).length > TARGET && current.length > 0) {
-      result.push(current.trim());
-      current = p;
-    } else {
-      current = current ? current + '\n\n' + p : p;
-    }
-  }
-  if (current.trim()) result.push(current.trim());
-
-  chunks = result.filter(c => c.length > 20);
-
-  if (chunks.length === 0) {
-    showError('No readable text found in this file.');
-    hideLoading();
-    return;
-  }
-
-  try {
-    localStorage.setItem('narrator_book', JSON.stringify({ chunks, name: bookName }));
-    localStorage.setItem('narrator_position', '0');
-  } catch(e) {}
-
-  currentChunk = 0;
-  hideLoading();
-  buildPlayer();
-}
-
-// ── Build Player ──
-function buildPlayer() {
-  document.getElementById('setup').style.display = 'none';
-  document.getElementById('player').style.display = 'flex';
-  document.getElementById('bookTitle').textContent = formatTitle(bookName);
-  document.getElementById('bookSubtitle').textContent = `${chunks.length} sections`;
-  buildWaveform();
-  buildChunkList();
-  updateChunkDisplay();
-  setStatus('Ready — press play');
-}
-
-function formatTitle(s) {
-  return s.replace(/\b\w/g, c => c.toUpperCase()).slice(0, 60);
-}
-
-// ── Waveform ──
-function buildWaveform() {
-  const wf = document.getElementById('waveform');
-  wf.innerHTML = '';
-  const BAR_COUNT = 48;
-  for (let i = 0; i < BAR_COUNT; i++) {
-    const bar = document.createElement('div');
-    bar.className = 'wave-bar';
-    const h = 10 + Math.sin(i * 0.7) * 14 + Math.random() * 18;
-    bar.style.height = h + 'px';
-    wf.appendChild(bar);
-  }
-  updateWaveform();
-}
-
-function updateWaveform() {
-  const bars = document.querySelectorAll('.wave-bar');
-  if (!bars.length) return;
-  const total = chunks.length;
-  const progress = total > 0 ? currentChunk / total : 0;
-  const played = Math.floor(progress * bars.length);
-
-  bars.forEach((bar, i) => {
-    bar.classList.remove('played','active');
-    if (i < played) bar.classList.add('played');
-    else if (i === played && isPlaying) bar.classList.add('active');
-  });
-}
-
-function seekByWave(e) {
-  const wf = document.getElementById('waveform');
-  const ratio = e.offsetX / wf.offsetWidth;
-  jumpToChunk(Math.floor(ratio * chunks.length));
-}
-
-// ── Chunk List ──
-function buildChunkList() {
-  const list = document.getElementById('chunkList');
-  list.innerHTML = '';
-  chunks.forEach((chunk, i) => {
-    const item = document.createElement('div');
-    item.className = 'chunk-item' + (i === currentChunk ? ' active' : '');
-    item.onclick = () => jumpToChunk(i);
-
-    const num = document.createElement('span');
-    num.className = 'chunk-num';
-    num.textContent = String(i + 1).padStart(2,'0');
-
-    const preview = document.createElement('span');
-    preview.textContent = chunk.slice(0, 60).replace(/\n/g,' ') + (chunk.length > 60 ? '…' : '');
-
-    item.appendChild(num);
-    item.appendChild(preview);
-    list.appendChild(item);
-  });
-}
-
-function updateChunkDisplay() {
-  document.querySelectorAll('.chunk-item').forEach((el, i) => {
-    el.classList.toggle('active', i === currentChunk);
-  });
-  const active = document.querySelector('.chunk-item.active');
-  if (active) active.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  document.getElementById('chunkProgress').textContent = `Section ${currentChunk + 1} of ${chunks.length}`;
-  updateWaveform();
-  localStorage.setItem('narrator_position', currentChunk);
-}
-
-// ── Speech Synthesis ──
-function speakChunk(idx) {
-  if (idx >= chunks.length) {
-    stopPlayback();
-    setStatus('Finished — reached end of book');
-    return;
-  }
-
-  speechSynthesis.cancel(); // clear queue
-
-  currentChunk = idx;
-  isPlaying = true;
-  updateChunkDisplay();
-  updatePlayBtn();
-  setStatus(`Playing section ${idx + 1} of ${chunks.length}`);
-
-  utterance = new SpeechSynthesisUtterance(chunks[idx]);
-
-  // Apply voice
-  const voices = speechSynthesis.getVoices();
-  const sel = document.getElementById('voiceSelect');
-  const v = voices[parseInt(sel.value)];
-  if (v) utterance.voice = v;
-
-  utterance.rate = playbackRate;
-  utterance.pitch = 1;
-
-  utterance.onend = () => {
-    if (isPlaying) speakChunk(idx + 1);
-  };
-
-  utterance.onerror = (e) => {
-    if (e.error === 'interrupted' || e.error === 'canceled') return;
-    showError('Speech error: ' + e.error);
-    isPlaying = false;
-    updatePlayBtn();
-  };
-
-  // Kick off waveform animation
-  clearInterval(waveInterval);
-  waveInterval = setInterval(updateWaveform, 600);
-
-  speechSynthesis.speak(utterance);
-
-  // iOS Safari workaround: speechSynthesis can stall; resume every 10s
-  keepAlive();
-}
-
-// iOS keepalive — Safari pauses synthesis after ~15s
-let keepAliveTimer = null;
-function keepAlive() {
-  clearInterval(keepAliveTimer);
-  keepAliveTimer = setInterval(() => {
-    if (!isPlaying) { clearInterval(keepAliveTimer); return; }
-    if (speechSynthesis.paused) speechSynthesis.resume();
-  }, 10000);
-}
-
-function stopPlayback() {
-  isPlaying = false;
-  speechSynthesis.cancel();
-  clearInterval(waveInterval);
-  clearInterval(keepAliveTimer);
-  updatePlayBtn();
-  updateWaveform();
-  document.getElementById('timeDisplay').textContent = '—';
-  setStatus('Paused');
-}
-
-function togglePlay() {
-  if (isPlaying) {
-    stopPlayback();
-  } else {
-    speakChunk(currentChunk);
-  }
-}
-
-function skipChunk(delta) {
-  const was = isPlaying;
-  stopPlayback();
-  currentChunk = Math.max(0, Math.min(chunks.length - 1, currentChunk + delta));
-  updateChunkDisplay();
-  if (was) speakChunk(currentChunk);
-}
-
-function jumpToChunk(idx) {
-  const was = isPlaying;
-  stopPlayback();
-  currentChunk = idx;
-  updateChunkDisplay();
-  if (was) speakChunk(currentChunk);
-}
-
-function updatePlayBtn() {
-  const icon = document.getElementById('playIcon');
-  icon.innerHTML = isPlaying
-    ? '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>'
-    : '<path d="M8 5v14l11-7z"/>';
-}
-
-function updateSpeed() {
-  playbackRate = parseFloat(document.getElementById('speedSelect').value);
-  if (utterance) utterance.rate = playbackRate;
-  // Restart current chunk at new speed if playing
-  if (isPlaying) speakChunk(currentChunk);
-}
-
-// ── UI Helpers ──
-function showLoading(msg) {
-  document.getElementById('loadingText').textContent = msg;
-  document.getElementById('loadingOverlay').classList.add('show');
-}
-function hideLoading() {
-  document.getElementById('loadingOverlay').classList.remove('show');
-}
-function showError(msg) {
-  const box = document.getElementById('errorBox');
-  box.textContent = msg;
-  box.style.display = 'block';
-  setTimeout(() => box.style.display = 'none', 7000);
-}
-function setStatus(msg) {
-  document.getElementById('statusBar').textContent = msg;
-}
-
-function resetApp() {
-  stopPlayback();
-  chunks = []; currentChunk = 0;
-  localStorage.removeItem('narrator_book');
-  localStorage.removeItem('narrator_position');
-  document.getElementById('player').style.display = 'none';
-  document.getElementById('setup').style.display = 'flex';
-  document.getElementById('bookUrl').value = '';
-  document.getElementById('fileInput').value = '';
-  setStatus('Ready — load a book to begin');
-}
-</script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>eBook Audio Reader</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- JSZip for EPUB ZIP parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- PDF.js for PDF reading -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- Google Fonts: Inter & Lora -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet" />
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+      }
+      .font-serif-reading {
+        font-family: 'Lora', Georgia, serif;
+      }
+      /* Custom scrollbars */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #e4e0d5;
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #d1ccc0;
+      }
+    </style>
+  </head>
+  <body class="bg-[#fdfbf7] text-[#2d2a26] min-h-screen flex flex-col antialiased">
+    <div id="root" class="min-h-screen flex flex-col"></div>
+
+    <!-- Load React, ReactDOM and Babel Standalone for live client-side compilation -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- App Code -->
+    <script type="text/babel">
+      const { useState, useEffect, useRef } = React;
+
+      // Ensure PDF.js worker is set
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+      // 1. WAV Header utility for raw 16-bit Mono 24000Hz PCM
+      function addWavHeader(base64Pcm, sampleRate = 24000) {
+        const binaryString = atob(base64Pcm);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        
+        const numChannels = 1;
+        const bitsPerSample = 16;
+        const blockAlign = numChannels * (bitsPerSample / 8);
+        const byteRate = sampleRate * blockAlign;
+        const dataSize = bytes.length;
+        const chunkSize = 36 + dataSize;
+        
+        const header = new ArrayBuffer(44);
+        const view = new DataView(header);
+        
+        // "RIFF"
+        view.setUint32(0, 0x52494646, false);
+        // ChunkSize (LE)
+        view.setUint32(4, chunkSize, true);
+        // "WAVE"
+        view.setUint32(8, 0x57415645, false);
+        // "fmt "
+        view.setUint32(12, 0x666d7420, false);
+        // Subchunk1Size (16 for PCM)
+        view.setUint32(16, 16, true);
+        // AudioFormat (1 for PCM)
+        view.setUint16(20, 1, true);
+        // NumChannels
+        view.setUint16(22, numChannels, true);
+        // SampleRate
+        view.setUint32(24, sampleRate, true);
+        // ByteRate
+        view.setUint32(28, byteRate, true);
+        // BlockAlign
+        view.setUint16(32, blockAlign, true);
+        // BitsPerSample
+        view.setUint16(34, bitsPerSample, true);
+        // "data"
+        view.setUint32(36, 0x64617461, false);
+        // Subchunk2Size
+        view.setUint32(40, dataSize, true);
+        
+        const wavBytes = new Uint8Array(44 + dataSize);
+        wavBytes.set(new Uint8Array(header), 0);
+        wavBytes.set(bytes, 44);
+        
+        const blob = new Blob([wavBytes], { type: 'audio/wav' });
+        return URL.createObjectURL(blob);
+      }
+
+      // 2. Parser Functions
+      async function parsePdf(fileBuffer, onProgress) {
+        const loadingTask = pdfjsLib.getDocument({ data: fileBuffer });
+        const pdf = await loadingTask.promise;
+        const totalPages = pdf.numPages;
+        const chapters = [];
+
+        for (let i = 1; i <= totalPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          
+          let lastY = -1;
+          let pageText = "";
+          
+          for (const item of textContent.items) {
+            if (item.str) {
+              if (lastY !== -1 && Math.abs(item.transform[5] - lastY) > 5) {
+                pageText += "\n";
+              } else if (pageText && !pageText.endsWith("\n") && !pageText.endsWith(" ")) {
+                pageText += " ";
+              }
+              pageText += item.str;
+              lastY = item.transform[5];
+            }
+          }
+
+          const trimmedText = pageText.trim();
+          if (trimmedText.length > 0) {
+            let title = `Page ${i}`;
+            const firstLine = trimmedText.split("\n")[0].trim();
+            if (firstLine && firstLine.length > 3 && firstLine.length < 50 && !firstLine.includes(".") && !/\d+/.test(firstLine)) {
+              title = `Page ${i}: ${firstLine}`;
+            }
+
+            chapters.push({
+              id: `page-${i}`,
+              title,
+              text: trimmedText,
+            });
+          }
+
+          if (onProgress) onProgress(Math.round((i / totalPages) * 100));
+        }
+        return chapters;
+      }
+
+      async function parseEpub(fileBuffer, onProgress) {
+        const zip = await JSZip.loadAsync(fileBuffer);
+        const containerFile = zip.file("META-INF/container.xml");
+        if (!containerFile) throw new Error("Invalid EPUB: missing container.xml");
+
+        const containerXmlStr = await containerFile.async("string");
+        const parser = new DOMParser();
+        const containerDoc = parser.parseFromString(containerXmlStr, "text/xml");
+        const rootfileEl = containerDoc.querySelector("rootfile");
+        if (!rootfileEl) throw new Error("Invalid container.xml");
+
+        const opfPath = rootfileEl.getAttribute("full-path");
+        const baseDir = opfPath.includes("/") ? opfPath.substring(0, opfPath.lastIndexOf("/") + 1) : "";
+
+        const opfFile = zip.file(opfPath);
+        const opfXmlStr = await opfFile.async("string");
+        const opfDoc = parser.parseFromString(opfXmlStr, "text/xml");
+
+        const manifestItems = opfDoc.querySelectorAll("manifest > item");
+        const manifestMap = new Map();
+        manifestItems.forEach((item) => {
+          const id = item.getAttribute("id");
+          const href = item.getAttribute("href");
+          if (id && href) manifestMap.set(id, decodeURIComponent(href));
+        });
+
+        const spineItems = opfDoc.querySelectorAll("spine > itemref");
+        const chapters = [];
+        const totalSpineItems = spineItems.length;
+
+        for (let i = 0; i < totalSpineItems; i++) {
+          const idref = spineItems[i].getAttribute("idref");
+          if (!idref) continue;
+
+          const href = manifestMap.get(idref);
+          if (!href) continue;
+
+          let fullPath = baseDir + href;
+          if (fullPath.includes("../")) {
+            const parts = fullPath.split("/");
+            const stack = [];
+            for (const part of parts) {
+              if (part === "..") stack.pop();
+              else if (part !== ".") stack.push(part);
+            }
+            fullPath = stack.join("/");
+          }
+
+          const file = zip.file(fullPath) || zip.file(fullPath.split("#")[0]);
+          if (!file) continue;
+
+          const htmlStr = await file.async("string");
+          const chapterDoc = parser.parseFromString(htmlStr, "text/html");
+          
+          // Clean non-readable nodes
+          chapterDoc.querySelectorAll("script, style, iframe, noscript").forEach(el => el.remove());
+
+          let title = "";
+          const heading = chapterDoc.querySelector("h1, h2, h3, h4");
+          if (heading) title = heading.textContent.trim();
+          if (!title && chapterDoc.title) title = chapterDoc.title.trim();
+          if (!title || title.length > 80) title = `Section ${chapters.length + 1}`;
+
+          const paragraphs = chapterDoc.querySelectorAll("p, div, li, h1, h2, h3, h4, blockquote");
+          let bodyText = "";
+          paragraphs.forEach((p) => {
+            const pText = p.textContent ? p.textContent.trim() : "";
+            if (pText.length > 0 && !bodyText.endsWith(pText)) {
+              bodyText += pText + "\n\n";
+            }
+          });
+
+          const cleanedText = bodyText.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+          if (cleanedText) {
+            chapters.push({
+              id: idref,
+              title,
+              text: cleanedText,
+            });
+          }
+
+          if (onProgress) onProgress(Math.round(((i + 1) / totalSpineItems) * 100));
+        }
+        return chapters;
+      }
+
+      // App Component
+      function App() {
+        const [apiKey, setApiKey] = useState(() => localStorage.getItem("gemini_tts_api_key") || "");
+        const [showKeyPrompt, setShowKeyPrompt] = useState(!localStorage.getItem("gemini_tts_api_key"));
+        const [books, setBooks] = useState(() => {
+          try {
+            return JSON.parse(localStorage.getItem("tts_reader_books") || "[]");
+          } catch {
+            return [];
+          }
+        });
+        const [currentBookIndex, setCurrentBookIndex] = useState(() => {
+          const idx = parseInt(localStorage.getItem("tts_reader_curr_idx") || "-1", 10);
+          return idx;
+        });
+        const [isLoading, setIsLoading] = useState(false);
+        const [loadingProgress, setLoadingProgress] = useState(0);
+        
+        // Player State
+        const [engine, setEngine] = useState("browser"); // "gemini" or "browser"
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [playbackSpeed, setPlaybackSpeed] = useState(1);
+        const [geminiVoice, setGeminiVoice] = useState("Kore");
+        const [browserVoice, setBrowserVoice] = useState("");
+        const [speechVoices, setSpeechVoices] = useState([]);
+        const [fontSize, setFontSize] = useState("md"); // "sm", "md", "lg", "xl"
+
+        // Playback tracking
+        const [currentSentenceIndex, setCurrentSentenceIndex] = useState(-1);
+        const [sentences, setSentences] = useState([]);
+
+        const audioRef = useRef(new Audio());
+        const synthesisUtteranceRef = useRef(null);
+        const readerContentRef = useRef(null);
+
+        const currentBook = currentBookIndex >= 0 && currentBookIndex < books.length ? books[currentBookIndex] : null;
+        const currentChapter = currentBook ? currentBook.chapters[currentBook.currentChapterIndex] : null;
+
+        // Load speech synthesis voices
+        useEffect(() => {
+          const updateVoices = () => {
+            const voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+            setSpeechVoices(voices);
+            if (voices.length > 0 && !browserVoice) {
+              const defaultVoice = voices.find(v => v.lang.startsWith("en")) || voices[0];
+              setBrowserVoice(defaultVoice.name);
+            }
+          };
+          updateVoices();
+          if (window.speechSynthesis) {
+            window.speechSynthesis.onvoiceschanged = updateVoices;
+          }
+        }, [browserVoice]);
+
+        // Save state to localStorage
+        useEffect(() => {
+          localStorage.setItem("tts_reader_books", JSON.stringify(books));
+          localStorage.setItem("tts_reader_curr_idx", currentBookIndex.toString());
+        }, [books, currentBookIndex]);
+
+        // Split text into sentences for readers when chapter changes
+        useEffect(() => {
+          if (currentChapter) {
+            // regex to split by sentence delimiters but keeping them
+            const text = currentChapter.text;
+            const sentenceList = text
+              .split(/(?<=[.!?])\s+/)
+              .filter(s => s.trim().length > 0);
+            setSentences(sentenceList);
+            setCurrentSentenceIndex(-1);
+            stopPlayback();
+          } else {
+            setSentences([]);
+            setCurrentSentenceIndex(-1);
+          }
+        }, [currentBookIndex, currentBook?.currentChapterIndex]);
+
+        const saveApiKey = (key) => {
+          const trimmed = key.trim();
+          setApiKey(trimmed);
+          if (trimmed) {
+            localStorage.setItem("gemini_tts_api_key", trimmed);
+            setShowKeyPrompt(false);
+          } else {
+            localStorage.removeItem("gemini_tts_api_key");
+          }
+        };
+
+        const handleFileUpload = async (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+
+          setIsLoading(true);
+          setLoadingProgress(10);
+          try {
+            const fileType = file.name.endsWith(".pdf") ? "pdf" : file.name.endsWith(".epub") ? "epub" : null;
+            if (!fileType) throw new Error("Unsupported format. Please upload .pdf or .epub files.");
+
+            const arrayBuffer = await file.arrayBuffer();
+            let parsedChapters = [];
+
+            if (fileType === "pdf") {
+              parsedChapters = await parsePdf(arrayBuffer, (p) => setLoadingProgress(10 + Math.round(p * 0.9)));
+            } else {
+              parsedChapters = await parseEpub(arrayBuffer, (p) => setLoadingProgress(10 + Math.round(p * 0.9)));
+            }
+
+            const newBook = {
+              id: Date.now().toString(),
+              title: file.name.replace(/\.[^/.]+$/, ""), // remove extension
+              fileName: file.name,
+              fileType,
+              chapters: parsedChapters,
+              currentChapterIndex: 0
+            };
+
+            setBooks(prev => [newBook, ...prev]);
+            setCurrentBookIndex(0);
+          } catch (err) {
+            alert(err.message || "Failed to process book file.");
+          } finally {
+            setIsLoading(false);
+            setLoadingProgress(0);
+          }
+        };
+
+        const deleteBook = (idx, e) => {
+          e.stopPropagation();
+          stopPlayback();
+          setBooks(prev => prev.filter((_, i) => i !== idx));
+          if (currentBookIndex === idx) {
+            setCurrentBookIndex(-1);
+          } else if (currentBookIndex > idx) {
+            setCurrentBookIndex(prev => prev - 1);
+          }
+        };
+
+        const changeChapter = (idx) => {
+          if (!currentBook) return;
+          stopPlayback();
+          const updated = [...books];
+          updated[currentBookIndex].currentChapterIndex = idx;
+          setBooks(updated);
+        };
+
+        // Scroll highlighted sentence into view
+        useEffect(() => {
+          if (currentSentenceIndex !== -1 && readerContentRef.current) {
+            const activeEl = readerContentRef.current.querySelector(".active-sentence");
+            if (activeEl) {
+              activeEl.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+          }
+        }, [currentSentenceIndex]);
+
+        // PLAYBACK ENGINES
+
+        const stopPlayback = () => {
+          setIsPlaying(false);
+          audioRef.current.pause();
+          audioRef.current.src = "";
+          if (window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+          }
+        };
+
+        const playPause = async () => {
+          if (isPlaying) {
+            setIsPlaying(false);
+            if (engine === "browser") {
+              window.speechSynthesis.pause();
+            } else {
+              audioRef.current.pause();
+            }
+            return;
+          }
+
+          if (sentences.length === 0) return;
+
+          let startIdx = currentSentenceIndex === -1 ? 0 : currentSentenceIndex;
+          setIsPlaying(true);
+          playSentence(startIdx);
+        };
+
+        const playSentence = async (index) => {
+          if (index >= sentences.length) {
+            // Next chapter logic
+            if (currentBook && currentBook.currentChapterIndex < currentBook.chapters.length - 1) {
+              const updated = [...books];
+              updated[currentBookIndex].currentChapterIndex += 1;
+              setBooks(updated);
+              // Small delay to let useEffect run and split sentences
+              setTimeout(() => {
+                setCurrentSentenceIndex(0);
+                setIsPlaying(true);
+                playSentence(0);
+              }, 300);
+            } else {
+              stopPlayback();
+              setCurrentSentenceIndex(-1);
+            }
+            return;
+          }
+
+          setCurrentSentenceIndex(index);
+          const sentenceText = sentences[index];
+
+          if (engine === "browser") {
+            // Browser Web Speech TTS
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(sentenceText);
+            
+            if (browserVoice) {
+              const selectedVoice = speechVoices.find(v => v.name === browserVoice);
+              if (selectedVoice) utterance.voice = selectedVoice;
+            }
+            
+            utterance.rate = playbackSpeed;
+            
+            utterance.onend = () => {
+              if (isPlaying) playSentence(index + 1);
+            };
+            
+            utterance.onerror = () => {
+              // On error fallback
+              if (isPlaying) playSentence(index + 1);
+            };
+
+            synthesisUtteranceRef.current = utterance;
+            window.speechSynthesis.speak(utterance);
+
+            // Chrome/iOS Safari hack for long sentences occasionally pausing
+            const keepAliveInterval = setInterval(() => {
+              if (window.speechSynthesis.speaking) {
+                window.speechSynthesis.pause();
+                window.speechSynthesis.resume();
+              } else {
+                clearInterval(keepAliveInterval);
+              }
+            }, 10000);
+
+          } else {
+            // Gemini Cloud TTS
+            if (!apiKey) {
+              setShowKeyPrompt(true);
+              setIsPlaying(false);
+              return;
+            }
+
+            try {
+              // Generate via Direct REST API
+              const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent?key=${apiKey}`;
+              const response = await fetch(url, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                  contents: [{ parts: [{ text: sentenceText }] }],
+                  config: {
+                    responseModalities: ["AUDIO"],
+                    speechConfig: {
+                      voiceConfig: {
+                        prebuiltVoiceConfig: { voiceName: geminiVoice }
+                      }
+                    }
+                  }
+                })
+              });
+
+              if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(errData.error?.message || "Failed API call. Check API key.");
+              }
+
+              const resJson = await response.json();
+              const base64Audio = resJson.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+              if (!base64Audio) throw new Error("No audio returned from Gemini.");
+
+              const wavUrl = addWavHeader(base64Audio, 24000);
+              
+              audioRef.current.pause();
+              audioRef.current.src = wavUrl;
+              audioRef.current.playbackRate = playbackSpeed;
+              
+              audioRef.current.onended = () => {
+                URL.revokeObjectURL(wavUrl);
+                playSentence(index + 1);
+              };
+
+              audioRef.current.onerror = () => {
+                URL.revokeObjectURL(wavUrl);
+                if (isPlaying) playSentence(index + 1);
+              };
+
+              await audioRef.current.play();
+            } catch (err) {
+              alert(`Gemini TTS Error: ${err.message}. Falling back to offline browser voice.`);
+              setEngine("browser");
+              // Try playing the same sentence using browser TTS
+              setTimeout(() => playSentence(index), 500);
+            }
+          }
+        };
+
+        // Sync playback rate if user changes speed during playback
+        useEffect(() => {
+          if (audioRef.current) {
+            audioRef.current.playbackRate = playbackSpeed;
+          }
+        }, [playbackSpeed]);
+
+        // Cleanup audio on unmount
+        useEffect(() => {
+          return () => {
+            audioRef.current.pause();
+            window.speechSynthesis?.cancel();
+          };
+        }, []);
+
+        const nextSentence = () => {
+          if (currentSentenceIndex < sentences.length - 1) {
+            playSentence(currentSentenceIndex + 1);
+          }
+        };
+
+        const prevSentence = () => {
+          if (currentSentenceIndex > 0) {
+            playSentence(currentSentenceIndex - 1);
+          }
+        };
+
+        // Compute Font class
+        const getFontSizeClass = () => {
+          if (fontSize === "sm") return "text-sm md:text-base leading-relaxed";
+          if (fontSize === "lg") return "text-lg md:text-2xl leading-relaxed";
+          if (fontSize === "xl") return "text-xl md:text-3xl leading-relaxed";
+          return "text-base md:text-xl leading-relaxed";
+        };
+
+        return (
+          <div class="flex-1 flex flex-col h-screen overflow-hidden">
+            {/* Header */}
+            <header class="h-14 bg-white border-b border-stone-200 px-4 flex items-center justify-between z-10">
+              <div class="flex items-center space-x-2">
+                <svg class="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                <h1 class="text-base font-bold text-stone-900 tracking-tight">eBook Audio Reader</h1>
+              </div>
+
+              <div class="flex items-center space-x-2">
+                <button 
+                  onClick={() => setShowKeyPrompt(true)}
+                  class="flex items-center space-x-1 text-xs px-2.5 py-1.5 rounded-full border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                  </svg>
+                  <span class="hidden sm:inline font-medium">Gemini Key</span>
+                </button>
+              </div>
+            </header>
+
+            {/* Main content split */}
+            <div class="flex-1 flex overflow-hidden">
+              {/* Sidebar: Book Navigation */}
+              <aside class="w-64 bg-stone-50 border-r border-stone-200 flex-col hidden md:flex">
+                <div class="p-4 border-b border-stone-200">
+                  <label class="flex flex-col items-center justify-center border-2 border-dashed border-stone-300 rounded-lg py-4 px-2 hover:bg-stone-100 cursor-pointer transition-all">
+                    <svg class="w-8 h-8 text-stone-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    <span class="text-xs font-semibold text-stone-600">Upload PDF / EPUB</span>
+                    <input type="file" accept=".pdf,.epub" class="hidden" onChange={handleFileUpload} />
+                  </label>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-2 space-y-4">
+                  <div>
+                    <h3 class="px-2 text-xxs font-bold text-stone-400 uppercase tracking-wider mb-2">My Books</h3>
+                    {books.length === 0 ? (
+                      <p class="text-xs text-stone-500 px-2 italic">No books uploaded yet.</p>
+                    ) : (
+                      <div class="space-y-1">
+                        {books.map((book, idx) => (
+                          <div 
+                            key={book.id} 
+                            onClick={() => { stopPlayback(); setCurrentBookIndex(idx); }}
+                            class={`flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs font-medium transition-colors ${idx === currentBookIndex ? "bg-amber-100 text-amber-900" : "hover:bg-stone-200 text-stone-700"}`}
+                          >
+                            <span class="truncate pr-2">{book.title}</span>
+                            <button onClick={(e) => deleteBook(idx, e)} class="text-stone-400 hover:text-red-600">
+                              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {currentBook && (
+                    <div>
+                      <h3 class="px-2 text-xxs font-bold text-stone-400 uppercase tracking-wider mb-2">Chapters</h3>
+                      <div class="space-y-1 max-h-64 overflow-y-auto pr-1">
+                        {currentBook.chapters.map((chapter, idx) => (
+                          <button
+                            key={chapter.id}
+                            onClick={() => changeChapter(idx)}
+                            class={`w-full text-left p-2 rounded text-xs truncate transition-colors ${idx === currentBook.currentChapterIndex ? "bg-[#efece3] font-semibold text-stone-900 border-l-4 border-amber-700" : "hover:bg-stone-200 text-stone-600"}`}
+                          >
+                            {chapter.title}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </aside>
+
+              {/* Central Reading Screen */}
+              <main class="flex-1 flex flex-col bg-[#faf6ef] overflow-hidden relative">
+                {/* Loader Overlay */}
+                {isLoading && (
+                  <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-xs flex flex-col items-center justify-center z-50 text-white p-4">
+                    <div class="bg-stone-900 rounded-2xl p-6 flex flex-col items-center max-w-sm w-full text-center border border-stone-800">
+                      <svg class="animate-spin h-8 w-8 text-amber-500 mb-3" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <h4 class="font-bold text-lg mb-1">Parsing eBook</h4>
+                      <p class="text-xs text-stone-400 mb-4">Reading EPUB files or unzipping pages. This stays fully local on your device.</p>
+                      <div class="w-full bg-stone-800 rounded-full h-2">
+                        <div class="bg-amber-500 h-2 rounded-full transition-all duration-300" style={{ width: `${loadingProgress}%` }}></div>
+                      </div>
+                      <span class="text-xs text-amber-500 mt-2 font-semibold">{loadingProgress}%</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Content Reader Pane */}
+                <div class="flex-1 overflow-y-auto px-6 md:px-12 py-8" ref={readerContentRef}>
+                  {!currentBook ? (
+                    <div class="h-full flex flex-col items-center justify-center max-w-md mx-auto text-center py-20">
+                      <div class="bg-white p-6 rounded-full shadow-xs border border-stone-100 mb-4 text-amber-700">
+                        <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                        </svg>
+                      </div>
+                      <h2 class="text-xl font-bold text-stone-900 mb-2">Welcome to eBook Audio Reader</h2>
+                      <p class="text-sm text-stone-500 mb-6">Upload a book in .epub or .pdf format to read with our beautiful paper view, and listen to ultra-realistic Gemini narrator voices.</p>
+                      
+                      {/* Mobile file input card */}
+                      <label class="w-full bg-amber-700 hover:bg-amber-800 text-white font-medium py-3 px-6 rounded-xl cursor-pointer shadow-md shadow-amber-900/10 transition-colors flex items-center justify-center space-x-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                        <span>Choose EPUB or PDF</span>
+                        <input type="file" accept=".pdf,.epub" class="hidden" onChange={handleFileUpload} />
+                      </label>
+                    </div>
+                  ) : (
+                    <div class="max-w-2xl mx-auto">
+                      {/* Chapter Title block */}
+                      <div class="border-b border-stone-200 pb-4 mb-8">
+                        <span class="text-xs uppercase tracking-widest text-amber-800 font-semibold mb-1 block">{currentBook.title}</span>
+                        <h2 class="text-2xl md:text-3xl font-serif-reading font-bold text-stone-900">{currentChapter?.title}</h2>
+                      </div>
+
+                      {/* Displaying Text and Highlighting active sentence */}
+                      <div class={`font-serif-reading ${getFontSizeClass()} text-stone-800 whitespace-pre-wrap select-text`}>
+                        {sentences.map((sentence, index) => {
+                          const isActive = index === currentSentenceIndex;
+                          return (
+                            <span
+                              key={index}
+                              onClick={() => { stopPlayback(); setCurrentSentenceIndex(index); }}
+                              class={`cursor-pointer transition-all duration-200 rounded p-0.5 ${isActive ? "bg-amber-200 text-stone-950 border-b border-amber-400 font-semibold active-sentence" : "hover:bg-stone-200/50"}`}
+                            >
+                              {sentence}{" "}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Settings toolbar overlay (top-right of reader screen) */}
+                {currentBook && (
+                  <div class="absolute top-4 right-4 flex items-center space-x-2 bg-white/95 backdrop-blur-xs px-2.5 py-1.5 rounded-full border border-stone-200/80 shadow-md z-10">
+                    <button 
+                      onClick={() => setFontSize(prev => prev === "sm" ? "md" : prev === "md" ? "lg" : prev === "lg" ? "xl" : "sm")}
+                      class="p-1 rounded-full text-stone-600 hover:bg-stone-100 hover:text-stone-900 transition-colors"
+                      title="Adjust font size"
+                    >
+                      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                      </svg>
+                    </button>
+                    <span class="text-xxs font-bold text-stone-400 uppercase tracking-wider select-none px-1">Size: {fontSize.toUpperCase()}</span>
+                  </div>
+                )}
+              </main>
+            </div>
+
+            {/* Sticky Audio Control Bar */}
+            {currentBook && (
+              <footer class="bg-white border-t border-stone-200 px-4 py-3 md:py-4 flex flex-col space-y-3 z-20">
+                {/* Progress tracker */}
+                <div class="flex items-center justify-between text-xs text-stone-500 font-mono">
+                  <div class="flex items-center space-x-2">
+                    <span class="font-bold text-amber-800 uppercase text-xxs tracking-wider">{engine === "gemini" ? "Gemini TTS" : "Offline TTS"}</span>
+                    <span>•</span>
+                    <span class="truncate max-w-[200px]">{currentChapter?.title}</span>
+                  </div>
+                  <div>
+                    {sentences.length > 0 ? (
+                      <span>Sentence {currentSentenceIndex + 1} of {sentences.length}</span>
+                    ) : (
+                      <span>Reading text...</span>
+                    )}
+                  </div>
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center md:justify-between space-y-3 md:space-y-0">
+                  {/* Speech Engines & Voice settings */}
+                  <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                    {/* Toggle Engines */}
+                    <div class="flex bg-stone-100 p-1 rounded-lg border border-stone-200 text-xs font-semibold">
+                      <button 
+                        onClick={() => { stopPlayback(); setEngine("gemini"); }}
+                        class={`px-3 py-1.5 rounded-md transition-colors ${engine === "gemini" ? "bg-white text-stone-900 shadow-xs" : "text-stone-500 hover:text-stone-800"}`}
+                      >
+                        Gemini TTS
+                      </button>
+                      <button 
+                        onClick={() => { stopPlayback(); setEngine("browser"); }}
+                        class={`px-3 py-1.5 rounded-md transition-colors ${engine === "browser" ? "bg-white text-stone-900 shadow-xs" : "text-stone-500 hover:text-stone-800"}`}
+                      >
+                        Offline (Free)
+                      </button>
+                    </div>
+
+                    {/* Voice selector */}
+                    {engine === "gemini" ? (
+                      <select 
+                        value={geminiVoice} 
+                        onChange={(e) => { stopPlayback(); setGeminiVoice(e.target.value); }}
+                        class="text-xs bg-stone-50 border border-stone-300 rounded-lg p-2 font-medium text-stone-700 outline-none focus:ring-1 focus:ring-amber-500"
+                      >
+                        <option value="Kore">Kore (Male - Standard)</option>
+                        <option value="Puck">Puck (Male - Cheerful)</option>
+                        <option value="Charon">Charon (Female - Warm)</option>
+                        <option value="Fenrir">Fenrir (Male - Rich)</option>
+                        <option value="Zephyr">Zephyr (Female - Bright)</option>
+                      </select>
+                    ) : (
+                      <select 
+                        value={browserVoice} 
+                        onChange={(e) => { stopPlayback(); setBrowserVoice(e.target.value); }}
+                        class="text-xs max-w-[200px] bg-stone-50 border border-stone-300 rounded-lg p-2 font-medium text-stone-700 outline-none focus:ring-1 focus:ring-amber-500 truncate"
+                      >
+                        {speechVoices.map((v) => (
+                          <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
+                        ))}
+                      </select>
+                    )}
+
+                    {/* Speed Controls */}
+                    <div class="flex items-center space-x-2 bg-stone-50 px-2 py-1 rounded-lg border border-stone-200">
+                      <svg class="w-4 h-4 text-stone-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <select
+                        value={playbackSpeed}
+                        onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))}
+                        class="text-xs bg-transparent border-none text-stone-700 font-semibold outline-none focus:ring-0 cursor-pointer"
+                      >
+                        <option value="0.5">0.5x</option>
+                        <option value="0.75">0.75x</option>
+                        <option value="1.0">1.0x</option>
+                        <option value="1.25">1.25x</option>
+                        <option value="1.5">1.5x</option>
+                        <option value="2.0">2.0x</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Playback Controls */}
+                  <div class="flex items-center space-x-4">
+                    <button 
+                      onClick={prevSentence} 
+                      disabled={sentences.length === 0 || currentSentenceIndex <= 0}
+                      class="p-2 rounded-full border border-stone-200 text-stone-600 hover:bg-stone-100 disabled:opacity-40 transition-colors"
+                    >
+                      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0019 16V8a1 1 0 00-1.6-.8l-5.334 4zM4.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0011 16V8a1 1 0 00-1.6-.8l-5.334 4z" />
+                      </svg>
+                    </button>
+
+                    <button 
+                      onClick={playPause}
+                      class="p-3.5 bg-amber-700 hover:bg-amber-800 text-white rounded-full shadow-md shadow-amber-900/10 transition-colors"
+                    >
+                      {isPlaying ? (
+                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                          <path fill-rule="evenodd" d="M18 18V6H14V18H18ZM10 18V6H6V18H10Z" clip-rule="evenodd" />
+                        </svg>
+                      ) : (
+                        <svg class="w-6 h-6 pl-0.5" fill="currentColor" viewBox="0 0 24 24">
+                          <path fill-rule="evenodd" d="M2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10S2 17.523 2 12zm10 1a1 1 0 100-2 1 1 0 000 2zm-2 4a1 1 0 100-2 1 1 0 000 2zm6-4a1 1 0 11-2 0 1 1 0 012 0z" clip-rule="evenodd" class="hidden" />
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      )}
+                    </button>
+
+                    <button 
+                      onClick={nextSentence}
+                      disabled={sentences.length === 0 || currentSentenceIndex >= sentences.length - 1}
+                      class="p-2 rounded-full border border-stone-200 text-stone-600 hover:bg-stone-100 disabled:opacity-40 transition-colors"
+                    >
+                      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.934 12.8a1 1 0 000-1.6l-5.334-4A1 1 0 005 8v8a1 1 0 001.6.8l5.334-4zM19.934 12.8a1 1 0 000-1.6l-5.334-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.334-4z" />
+                      </svg>
+                    </button>
+
+                    <button 
+                      onClick={stopPlayback}
+                      class="p-2 rounded-full border border-stone-200 text-stone-600 hover:bg-stone-100 transition-colors"
+                    >
+                      <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path fill-rule="evenodd" d="M4 4h16v16H4z" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </footer>
+            )}
+
+            {/* Key configuration prompt modal */}
+            {showKeyPrompt && (
+              <div class="fixed inset-0 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+                <div class="bg-white rounded-2xl border border-stone-200 p-6 max-w-md w-full shadow-2xl">
+                  <div class="flex items-start space-x-3 mb-4">
+                    <div class="bg-amber-100 text-amber-800 p-2 rounded-full">
+                      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 class="text-lg font-bold text-stone-900">Configure Gemini API Key</h3>
+                      <p class="text-xs text-stone-500 mt-1">To use ultra-realistic voice narration, enter your Google Gemini API Key. It will be stored securely in your browser's private localStorage and sent directly to Google's API.</p>
+                    </div>
+                  </div>
+
+                  <input 
+                    type="password" 
+                    placeholder="AIzaSy..." 
+                    defaultValue={apiKey}
+                    id="apiKeyInput"
+                    class="w-full bg-stone-50 border border-stone-300 rounded-xl px-4 py-2.5 text-sm font-mono outline-none focus:ring-2 focus:ring-amber-500 mb-4"
+                  />
+
+                  <div class="flex space-x-2">
+                    <button 
+                      onClick={() => {
+                        const val = document.getElementById("apiKeyInput").value;
+                        saveApiKey(val);
+                      }}
+                      class="flex-1 bg-amber-700 hover:bg-amber-800 text-white py-2 px-4 rounded-xl text-sm font-semibold transition-colors"
+                    >
+                      Save Key
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setShowKeyPrompt(false);
+                        setEngine("browser");
+                      }}
+                      class="flex-1 bg-stone-100 hover:bg-stone-200 text-stone-700 py-2 px-4 rounded-xl text-sm font-semibold transition-colors border border-stone-300"
+                    >
+                      Use Offline TTS Only
+                    </button>
+                  </div>
+                  <div class="mt-4 pt-3 border-t border-stone-100 text-[10px] text-stone-400 text-center">
+                    Get a free API key at <a href="https://aistudio.google.com/" target="_blank" class="text-amber-700 underline font-medium">Google AI Studio</a>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      // Render App
+      const root = ReactDOM.createRoot(document.getElementById("root"));
+      root.render(<App />);
+    </script>
+  </body>
 </html>
