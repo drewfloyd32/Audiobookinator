@@ -1,0 +1,1275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>eBook Audio Reader (Standalone)</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <!-- JSZip and PDF.js CDNs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .font-serif-editor {
+      font-family: 'Playfair Display', Georgia, serif;
+    }
+    .font-mono-editor {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(245, 242, 235, 0.5);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(139, 92, 26, 0.2);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(139, 92, 26, 0.4);
+    }
+  </style>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            amber: {
+              50: '#fdfbeb',
+              100: '#fbf7c3',
+              200: '#f7ed8b',
+              300: '#f1db4d',
+              400: '#e8be1e',
+              500: '#ca9a13',
+              600: '#ab770e',
+              700: '#8b560c',
+              800: '#73440f',
+              900: '#603712',
+              950: '#381c06',
+            },
+            stone: {
+              50: '#faf9f6',
+              100: '#f4f3ed',
+              200: '#e6e4d9',
+              300: '#d0cdc0',
+              400: '#b0ab9b',
+              500: '#948f7f',
+              600: '#7a7566',
+              700: '#625e52',
+              800: '#4c4940',
+              900: '#3c3a33',
+              950: '#21201c',
+            }
+          }
+        }
+      }
+    }
+  </script>
+<script src="/_aistudio-iframe.js"></script></head>
+<body class="h-screen w-screen flex flex-col overflow-hidden bg-[#faf6ef] text-stone-800 font-sans">
+
+  <!-- Header Bar -->
+  <header class="h-14 bg-white border-b border-[#e6e2d8] px-4 md:px-6 flex items-center justify-between z-10 shrink-0 select-none">
+    <div class="flex items-center space-x-2.5">
+      <div class="bg-amber-50 text-amber-800 p-2 rounded-xl border border-amber-200">
+        <i data-lucide="book-open" class="w-4 h-4"></i>
+      </div>
+      <div>
+        <h1 class="text-sm font-bold text-stone-900 tracking-tight flex items-center">
+          <span>eBook Audio Reader</span>
+          <span class="ml-1.5 bg-amber-100 text-amber-800 text-[9px] px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wider">
+            Standalone
+          </span>
+        </h1>
+      </div>
+    </div>
+    <div class="flex items-center space-x-2">
+      <button onclick="toggleKeyModal(true)" id="key-indicator" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border border-stone-200 transition-all bg-white hover:bg-stone-50">
+        <span class="w-2 h-2 rounded-full bg-stone-300" id="key-dot"></span>
+        <span id="key-label">Gemini API Key</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Workspace Frame -->
+  <div class="flex-1 flex overflow-hidden relative">
+    
+    <!-- Loading overlay for book parsing -->
+    <div id="loading-overlay" class="hidden absolute inset-0 bg-stone-950/40 backdrop-blur-xs flex flex-col items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+      <div class="bg-white rounded-2xl border border-stone-200 p-6 flex flex-col items-center max-w-sm w-full text-center shadow-2xl">
+        <div class="animate-spin h-8 w-8 text-amber-700 mb-3 border-2 border-stone-100 border-t-amber-700 rounded-full"></div>
+        <h4 class="font-bold text-base text-stone-900 mb-1">Parsing eBook File</h4>
+        <p class="text-xs text-stone-500 mb-4 leading-relaxed">
+          Extracting text, unzipping packages, and creating a unified stream of chapters. This happens completely local to your device.
+        </p>
+        <div class="w-full bg-stone-100 rounded-full h-2 overflow-hidden border border-stone-200/40">
+          <div id="loading-progress-bar" class="bg-amber-700 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+        </div>
+        <span id="loading-progress-text" class="text-xs text-amber-800 mt-2 font-bold tracking-wider">0%</span>
+      </div>
+    </div>
+
+    <!-- Sidebar Container -->
+    <aside id="sidebar" class="w-64 border-r border-[#e6e2d8] bg-[#fdfcfa] flex flex-col shrink-0 select-none z-10 transition-transform duration-300">
+      <div class="p-4 border-b border-[#e6e2d8]">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center space-x-1.5">
+            <i data-lucide="library" class="w-4 h-4 text-amber-800"></i>
+            <h2 class="text-xs font-bold text-stone-700 uppercase tracking-wider">Your Library</h2>
+          </div>
+          <span id="book-count" class="text-[10px] font-bold bg-[#efece3] text-stone-600 px-1.5 py-0.5 rounded-md">0 Books</span>
+        </div>
+        
+        <!-- Drag-and-drop book upload -->
+        <div id="dropzone" class="border-2 border-dashed border-stone-300 hover:border-amber-600/60 rounded-xl p-4 bg-[#efece3]/20 hover:bg-[#efece3]/40 transition-all text-center cursor-pointer group relative">
+          <input type="file" id="file-input" accept=".epub,.pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+          <div class="flex flex-col items-center justify-center py-2">
+            <i data-lucide="upload-cloud" class="w-7 h-7 text-stone-400 group-hover:text-amber-700 mb-1.5 transition-colors"></i>
+            <span class="text-[11px] font-bold text-stone-700">Upload EPUB / PDF</span>
+            <span class="text-[9px] text-stone-400 mt-0.5">Drag & drop or browse files</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-3 space-y-1" id="book-list">
+        <!-- Book items injected here -->
+      </div>
+      
+      <div class="p-3 border-t border-[#e6e2d8] bg-stone-50">
+        <div class="text-[10px] text-stone-400 font-medium leading-relaxed">
+          Standalone offline-ready reader. All books and reading positions are saved automatically in your browser's LocalStorage.
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Pane -->
+    <main class="flex-1 flex flex-col bg-[#fcfaf7] overflow-hidden min-w-0">
+      <div class="h-10 border-b border-[#e6e2d8] bg-white px-4 md:px-6 flex items-center justify-between shrink-0 select-none">
+        <div class="flex items-center space-x-2 text-stone-400">
+          <i data-lucide="book-open" class="w-3.5 h-3.5 text-stone-400"></i>
+          <span id="reader-book-title" class="text-xs font-medium text-stone-500 max-w-xs md:max-w-md truncate">No Book Selected</span>
+        </div>
+        <div class="flex items-center space-x-1 border border-stone-200/80 rounded-lg p-0.5 bg-stone-50">
+          <button onclick="changeFontSize(-2)" class="p-1 text-stone-500 hover:text-stone-900 hover:bg-stone-200/50 rounded-md transition-colors" title="Decrease font size">
+            <i data-lucide="minus" class="w-3 h-3"></i>
+          </button>
+          <span id="font-size-label" class="text-[10px] font-bold text-stone-600 px-1.5 select-none font-mono">16px</span>
+          <button onclick="changeFontSize(2)" class="p-1 text-stone-500 hover:text-stone-900 hover:bg-stone-200/50 rounded-md transition-colors" title="Increase font size">
+            <i data-lucide="plus" class="w-3 h-3"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto px-6 py-8 md:px-12 md:py-16 flex justify-center" id="reader-scroll-container">
+        <article class="max-w-2xl w-full text-stone-800 leading-relaxed font-serif-editor break-words text-base" id="reader-content" style="font-size: 16px;">
+          <!-- Empty state illustrated if no book -->
+          <div class="flex flex-col items-center justify-center text-center py-20 px-4">
+            <div class="w-16 h-16 bg-[#efece3]/60 text-stone-400 flex items-center justify-center rounded-2xl mb-4 border border-[#e6e2d8]">
+              <i data-lucide="book-open-check" class="w-8 h-8 text-stone-400"></i>
+            </div>
+            <h2 class="text-stone-900 font-bold text-lg mb-1 tracking-tight font-sans">Open an eBook to Begin</h2>
+            <p class="text-xs text-stone-500 max-w-xs leading-relaxed font-sans">
+              Upload a standard DRM-free .epub or .pdf file on the left side to start parsing and listening.
+            </p>
+          </div>
+        </article>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- Footer Audio Controller -->
+  <footer class="bg-white border-t border-[#e6e2d8] px-4 py-3 md:px-6 z-10 shrink-0 select-none">
+    <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3 md:gap-6">
+      
+      <!-- Audio engine & voice toggles -->
+      <div class="w-full md:w-auto flex items-center space-x-3 shrink-0">
+        <div class="flex flex-col">
+          <label class="text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Audio Engine</label>
+          <select id="engine-select" onchange="handleEngineChange()" class="bg-stone-50 border border-stone-200/80 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-stone-700 outline-none hover:bg-stone-100 cursor-pointer min-w-[125px]">
+            <option value="browser">Browser TTS (Local)</option>
+            <option value="gemini" selected>Gemini Cloud TTS</option>
+          </select>
+        </div>
+        
+        <div class="flex flex-col">
+          <label class="text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Speaker Voice</label>
+          <select id="voice-select" onchange="handleVoiceChange()" class="bg-stone-50 border border-stone-200/80 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-stone-700 outline-none hover:bg-stone-100 cursor-pointer min-w-[125px]">
+            <!-- populated by script -->
+          </select>
+        </div>
+      </div>
+
+      <!-- Controls and playback status -->
+      <div class="flex flex-col items-center justify-center flex-1 w-full max-w-md">
+        <!-- Progress display -->
+        <span id="playback-sentence-status" class="text-[10px] font-medium text-stone-400 mb-2 font-mono text-center truncate max-w-[320px] md:max-w-md">
+          Ready to listen
+        </span>
+        
+        <!-- Controls buttons -->
+        <div class="flex items-center space-x-4">
+          <button onclick="playPrev()" class="p-2.5 text-stone-600 hover:text-stone-900 hover:bg-stone-50 active:scale-95 rounded-xl transition-all cursor-pointer border border-transparent hover:border-stone-100">
+            <i data-lucide="skip-back" class="w-4 h-4"></i>
+          </button>
+          
+          <button onclick="togglePlay()" id="play-button" class="w-11 h-11 bg-amber-700 hover:bg-amber-800 text-white rounded-full flex items-center justify-center shadow-lg shadow-amber-800/20 active:scale-95 hover:scale-105 transition-all cursor-pointer">
+            <i data-lucide="play" class="w-5 h-5 fill-white ml-0.5" id="play-icon"></i>
+          </button>
+          
+          <button onclick="playNext()" class="p-2.5 text-stone-600 hover:text-stone-900 hover:bg-stone-50 active:scale-95 rounded-xl transition-all cursor-pointer border border-transparent hover:border-stone-100">
+            <i data-lucide="skip-forward" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Playback Speed Controls -->
+      <div class="w-full md:w-auto flex items-center space-x-3 shrink-0 justify-end">
+        <div class="flex flex-col w-full md:w-32">
+          <div class="flex justify-between items-center mb-1">
+            <label class="text-[9px] font-bold text-stone-400 uppercase tracking-wider">Speed</label>
+            <span id="speed-label" class="text-[10px] font-bold text-stone-600 font-mono">1.0x</span>
+          </div>
+          <input type="range" id="speed-slider" min="0.5" max="2.0" step="0.1" value="1.0" oninput="handleSpeedChange(this.value)" class="w-full accent-amber-700 bg-stone-100 rounded-lg appearance-none h-1 cursor-pointer" />
+        </div>
+      </div>
+
+    </div>
+  </footer>
+
+  <!-- Gemini API Key Dialog Modal -->
+  <div id="key-modal" class="hidden fixed inset-0 bg-stone-950/40 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+    <div class="bg-white rounded-2xl border border-stone-200 p-6 flex flex-col max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
+      <div class="flex items-center justify-between mb-4 border-b border-stone-100 pb-3">
+        <h4 class="font-bold text-base text-stone-900 flex items-center space-x-2">
+          <i data-lucide="key" class="w-4 h-4 text-amber-700"></i>
+          <span>Configure Gemini API Key</span>
+        </h4>
+        <button onclick="toggleKeyModal(false)" class="p-1 text-stone-400 hover:text-stone-600 rounded-lg hover:bg-stone-50">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      
+      <p class="text-xs text-stone-500 mb-4 leading-relaxed">
+        To use the cost-effective <strong>Gemini Cloud Text-to-Speech</strong> on a static GitHub deployment, please provide your own <strong>Google AI Studio API Key</strong>. 
+      </p>
+      
+      <div class="bg-amber-50 rounded-xl p-3 border border-amber-100 text-[11px] text-amber-900 leading-relaxed mb-4">
+        <strong>🔒 Private & Secure:</strong> Your key is stored safely strictly inside your browser's local sandbox (<code class="font-mono bg-amber-100/60 px-1 py-0.5 rounded text-amber-850">localStorage</code>) and is sent directly to Google APIs. It is never transmitted to any third-party.
+      </div>
+      
+      <div class="flex flex-col mb-4">
+        <label class="text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1.5">Your Gemini API Key</label>
+        <input type="password" id="api-key-input" placeholder="AIzaSy..." class="bg-stone-50 border border-stone-200 rounded-xl px-3.5 py-2 text-xs font-mono outline-none focus:border-amber-700 focus:bg-white w-full transition-all" />
+      </div>
+
+      <div class="flex items-center justify-end space-x-2 pt-2 border-t border-stone-100">
+        <button onclick="clearApiKey()" class="px-4 py-2 rounded-xl text-xs font-semibold hover:bg-stone-100 text-stone-500 transition-colors">
+          Clear Key
+        </button>
+        <button onclick="saveApiKey()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-stone-900 hover:bg-black text-white transition-colors">
+          Save Settings
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Elegant Floating Toast Notifications -->
+  <div id="toast-container" class="fixed bottom-24 right-4 z-50 max-w-sm w-full pointer-events-none flex flex-col space-y-2">
+    <!-- Toasts injected dynamically here -->
+  </div>
+
+  <script>
+    // --- STATE ENGINE ---
+    let books = [];
+    let currentBookIndex = -1;
+    let sentences = [];
+    let currentSentenceIndex = 0;
+    let isPlaying = false;
+    let isGeneratingAudio = false;
+    let audioEngine = 'gemini';
+    let playbackSpeed = 1.0;
+    let selectedVoice = '';
+    let fontSize = 16;
+    let ttsAudioElement = new Audio();
+    
+    // Voice Presets
+    const GEMINI_VOICES = [
+      { name: 'Kore (Balanced)', value: 'Kore' },
+      { name: 'Puck (Playful)', value: 'Puck' },
+      { name: 'Charon (Deep)', value: 'Charon' },
+      { name: 'Fenrir (Rich)', value: 'Fenrir' },
+      { name: 'Zephyr (Soft)', value: 'Zephyr' }
+    ];
+
+    // Local Browser Voice cache
+    let browserVoices = [];
+
+    // --- INITIALIZATION ---
+    window.addEventListener('DOMContentLoaded', () => {
+      // Initialize lucide
+      lucide.createIcons();
+      
+      // Load saved state from LocalStorage
+      loadStateFromStorage();
+      
+      // Load speech synthesis voices
+      initBrowserVoices();
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.onvoiceschanged = initBrowserVoices;
+      }
+      
+      // Configure elements based on loaded engine
+      syncToggles();
+      renderBooks();
+      renderReader();
+      updateApiKeyIndicator();
+      
+      // Setup drag and drop
+      setupDropzone();
+    });
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `p-4 bg-white rounded-2xl border border-stone-200 shadow-2xl flex items-start space-x-3 pointer-events-auto transition-all duration-300 transform translate-y-4 opacity-0`;
+      
+      let iconColor = 'text-amber-700 bg-amber-50 border-amber-100';
+      let iconName = 'info';
+      if (type === 'error') {
+        iconColor = 'text-red-700 bg-red-50 border-red-100';
+        iconName = 'alert-triangle';
+      } else if (type === 'success') {
+        iconColor = 'text-emerald-700 bg-emerald-50 border-emerald-100';
+        iconName = 'check-circle-2';
+      }
+      
+      toast.innerHTML = `
+        <div class="p-1.5 rounded-lg border ${iconColor}">
+          <i data-lucide="${iconName}" class="w-4 h-4"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs text-stone-600 font-medium leading-relaxed">${message}</p>
+        </div>
+      `;
+      
+      container.appendChild(toast);
+      lucide.createIcons({ attrs: { class: 'w-4 h-4' } });
+      
+      // Animate entry
+      setTimeout(() => {
+        toast.classList.remove('translate-y-4', 'opacity-0');
+      }, 50);
+      
+      // Remove toast after 6 seconds
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 6000);
+    }
+
+    // --- LOCAL STORAGE HANDLING ---
+    function loadStateFromStorage() {
+      try {
+        // Load Books list
+        const savedBooks = localStorage.getItem('ebook_tts_books');
+        if (savedBooks) {
+          books = JSON.parse(savedBooks);
+          // Keep chapters unified for robust reading
+          books = books.map(b => {
+            if (b.chapters && b.chapters.length > 1) {
+              const combinedText = b.chapters.map(c => c.text).join("\n\n");
+              return {
+                ...b,
+                chapters: [{ id: "full-content", title: "Book Content", text: combinedText }],
+                currentChapterIndex: 0
+              };
+            }
+            return b;
+          });
+        }
+        
+        // Load Selected Book Index
+        const savedIdx = localStorage.getItem('ebook_tts_current_idx');
+        if (savedIdx !== null) {
+          currentBookIndex = parseInt(savedIdx, 10);
+          if (currentBookIndex >= books.length) {
+            currentBookIndex = books.length > 0 ? 0 : -1;
+          }
+        }
+        
+        // Load Engine
+        const savedEngine = localStorage.getItem('ebook_tts_engine');
+        if (savedEngine) {
+          audioEngine = savedEngine;
+        }
+        
+        // Load Speed
+        const savedSpeed = localStorage.getItem('ebook_tts_speed');
+        if (savedSpeed) {
+          playbackSpeed = parseFloat(savedSpeed);
+          document.getElementById('speed-slider').value = playbackSpeed;
+          document.getElementById('speed-label').textContent = playbackSpeed.toFixed(1) + 'x';
+        }
+
+        // Load Font Size
+        const savedFontSize = localStorage.getItem('ebook_tts_font_size');
+        if (savedFontSize) {
+          fontSize = parseInt(savedFontSize, 10);
+          document.getElementById('font-size-label').textContent = fontSize + 'px';
+        }
+      } catch (e) {
+        console.error("Failed to load local state", e);
+      }
+    }
+
+    function saveBooksToStorage() {
+      try {
+        localStorage.setItem('ebook_tts_books', JSON.stringify(books));
+        localStorage.setItem('ebook_tts_current_idx', currentBookIndex.toString());
+      } catch (e) {
+        console.error("Failed to save state to LocalStorage", e);
+      }
+    }
+
+    // --- RECTIFY / SYNCHRONIZE TOGGLES ---
+    function syncToggles() {
+      const engineSelect = document.getElementById('engine-select');
+      engineSelect.value = audioEngine;
+      
+      const voiceSelect = document.getElementById('voice-select');
+      voiceSelect.innerHTML = '';
+      
+      if (audioEngine === 'gemini') {
+        GEMINI_VOICES.forEach(vc => {
+          const opt = document.createElement('option');
+          opt.value = vc.value;
+          opt.textContent = vc.name;
+          voiceSelect.appendChild(opt);
+        });
+        const savedVoice = localStorage.getItem('ebook_tts_gemini_voice');
+        if (savedVoice) {
+          selectedVoice = savedVoice;
+          voiceSelect.value = savedVoice;
+        } else {
+          selectedVoice = 'Kore';
+          voiceSelect.value = 'Kore';
+        }
+      } else {
+        if (browserVoices.length === 0) {
+          const opt = document.createElement('option');
+          opt.value = '';
+          opt.textContent = 'Default Voice';
+          voiceSelect.appendChild(opt);
+        } else {
+          browserVoices.forEach((vc, idx) => {
+            const opt = document.createElement('option');
+            opt.value = idx.toString();
+            opt.textContent = `${vc.name} (${vc.lang})`;
+            voiceSelect.appendChild(opt);
+          });
+          const savedVoiceIdx = localStorage.getItem('ebook_tts_browser_voice_idx');
+          if (savedVoiceIdx !== null && parseInt(savedVoiceIdx, 10) < browserVoices.length) {
+            voiceSelect.value = savedVoiceIdx;
+            selectedVoice = savedVoiceIdx;
+          } else {
+            voiceSelect.selectedIndex = 0;
+            selectedVoice = voiceSelect.value;
+          }
+        }
+      }
+    }
+
+    function initBrowserVoices() {
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        browserVoices = window.speechSynthesis.getVoices() || [];
+        if (audioEngine === 'browser') {
+          syncToggles();
+        }
+      }
+    }
+
+    function handleEngineChange() {
+      stopPlayback();
+      const val = document.getElementById('engine-select').value;
+      audioEngine = val;
+      localStorage.setItem('ebook_tts_engine', val);
+      syncToggles();
+    }
+
+    function handleVoiceChange() {
+      stopPlayback();
+      const val = document.getElementById('voice-select').value;
+      selectedVoice = val;
+      if (audioEngine === 'gemini') {
+        localStorage.setItem('ebook_tts_gemini_voice', val);
+      } else {
+        localStorage.setItem('ebook_tts_browser_voice_idx', val);
+      }
+    }
+
+    function handleSpeedChange(val) {
+      playbackSpeed = parseFloat(val);
+      localStorage.setItem('ebook_tts_speed', val);
+      document.getElementById('speed-label').textContent = playbackSpeed.toFixed(1) + 'x';
+      if (ttsAudioElement) {
+        ttsAudioElement.playbackRate = playbackSpeed;
+      }
+    }
+
+    function changeFontSize(diff) {
+      fontSize = Math.min(Math.max(12, fontSize + diff), 32);
+      localStorage.setItem('ebook_tts_font_size', fontSize.toString());
+      document.getElementById('font-size-label').textContent = fontSize + 'px';
+      const readerEl = document.getElementById('reader-content');
+      readerEl.style.fontSize = fontSize + 'px';
+    }
+
+    // --- RENDER SIDEBAR BOOKS ---
+    function renderBooks() {
+      const listEl = document.getElementById('book-list');
+      const countEl = document.getElementById('book-count');
+      
+      listEl.innerHTML = '';
+      countEl.textContent = `${books.length} ${books.length === 1 ? 'Book' : 'Books'}`;
+      
+      if (books.length === 0) {
+        listEl.innerHTML = `
+          <div class="text-center py-8 text-stone-400 text-[11px] font-medium leading-relaxed px-2">
+            No books loaded. Drag a PDF or EPUB to begin.
+          </div>
+        `;
+        return;
+      }
+      
+      books.forEach((book, idx) => {
+        const isActive = idx === currentBookIndex;
+        const item = document.createElement('div');
+        item.className = `group flex items-center justify-between p-2.5 rounded-xl transition-all cursor-pointer select-none text-left ${
+          isActive 
+            ? 'bg-[#efece3] text-stone-900 shadow-xs border-l-4 border-amber-700 pl-2' 
+            : 'hover:bg-[#efece3]/50 text-stone-600 hover:text-stone-900'
+        }`;
+        
+        // Add click listener to select book
+        item.addEventListener('click', (e) => {
+          if (e.target.closest('.delete-btn')) return;
+          selectBook(idx);
+        });
+
+        const iconType = book.fileType === 'pdf' ? 'file-text' : 'book';
+        
+        item.innerHTML = `
+          <div class="flex items-center space-x-2.5 min-w-0 flex-1">
+            <div class="p-1.5 rounded-lg bg-white shadow-xs border border-stone-200/40 shrink-0">
+              <i data-lucide="${iconType}" class="w-3.5 h-3.5 text-stone-500"></i>
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="text-xs font-semibold truncate leading-tight">${book.title}</p>
+              <p class="text-[9px] text-stone-400 mt-0.5 capitalize font-mono">${book.fileType}</p>
+            </div>
+          </div>
+          <button class="delete-btn opacity-0 group-hover:opacity-100 p-1 rounded-lg text-stone-400 hover:text-red-600 hover:bg-white/80 transition-all shrink-0 cursor-pointer" title="Delete eBook">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+          </button>
+        `;
+        
+        // Add listener for delete
+        item.querySelector('.delete-btn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          deleteBook(idx);
+        });
+
+        listEl.appendChild(item);
+      });
+      
+      lucide.createIcons({ attrs: { class: 'w-3.5 h-3.5' } });
+    }
+
+    // --- SELECT AND DELETE BOOKS ---
+    function selectBook(idx) {
+      if (idx < 0 || idx >= books.length) return;
+      stopPlayback();
+      currentBookIndex = idx;
+      localStorage.setItem('ebook_tts_current_idx', idx.toString());
+      renderBooks();
+      loadActiveBookContent();
+    }
+
+    function deleteBook(idx) {
+      stopPlayback();
+      const isDeletingActive = idx === currentBookIndex;
+      books.splice(idx, 1);
+      
+      if (books.length === 0) {
+        currentBookIndex = -1;
+      } else if (isDeletingActive) {
+        currentBookIndex = 0;
+      } else if (idx < currentBookIndex) {
+        currentBookIndex--;
+      }
+      
+      saveBooksToStorage();
+      renderBooks();
+      
+      if (isDeletingActive || books.length === 0) {
+        loadActiveBookContent();
+      }
+      showToast("Book deleted from library", "info");
+    }
+
+    // --- RENDER CONTENT & SENTENCES ---
+    function loadActiveBookContent() {
+      const readerTitle = document.getElementById('reader-book-title');
+      const readerContent = document.getElementById('reader-content');
+      
+      if (currentBookIndex === -1 || books.length === 0) {
+        readerTitle.textContent = "No Book Selected";
+        readerContent.innerHTML = `
+          <div class="flex flex-col items-center justify-center text-center py-20 px-4">
+            <div class="w-16 h-16 bg-[#efece3]/60 text-stone-400 flex items-center justify-center rounded-2xl mb-4 border border-[#e6e2d8]">
+              <i data-lucide="book-open-check" class="w-8 h-8 text-stone-400"></i>
+            </div>
+            <h2 class="text-stone-900 font-bold text-lg mb-1 tracking-tight font-sans">Open an eBook to Begin</h2>
+            <p class="text-xs text-stone-500 max-w-xs leading-relaxed font-sans">
+              Upload a standard DRM-free .epub or .pdf file on the left side to start parsing and listening.
+            </p>
+          </div>
+        `;
+        lucide.createIcons();
+        sentences = [];
+        currentSentenceIndex = 0;
+        updatePlaybackStatus();
+        return;
+      }
+      
+      const activeBook = books[currentBookIndex];
+      readerTitle.textContent = activeBook.title;
+      
+      const fullText = activeBook.chapters[0].text;
+      sentences = splitIntoSentences(fullText);
+      
+      // Load saved progress
+      let savedProgress = 0;
+      try {
+        const progressMapStr = localStorage.getItem('ebook_tts_progress') || "{}";
+        const progressMap = JSON.parse(progressMapStr);
+        if (typeof progressMap[activeBook.id] === 'number' && progressMap[activeBook.id] >= 0 && progressMap[activeBook.id] < sentences.length) {
+          savedProgress = progressMap[activeBook.id];
+        }
+      } catch (e) {
+        console.error("Failed to restore progress", e);
+      }
+      
+      currentSentenceIndex = savedProgress;
+      renderReader();
+      updatePlaybackStatus();
+      
+      // Auto-scroll to position
+      setTimeout(() => scrollToActiveSentence(false), 100);
+    }
+
+    function splitIntoSentences(text) {
+      if (!text) return [];
+      return text
+        .split(/(?<=[.!?])\s+/)
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+    }
+
+    function renderReader() {
+      const container = document.getElementById('reader-content');
+      if (currentBookIndex === -1 || sentences.length === 0) return;
+      
+      container.innerHTML = '';
+      
+      // Generate paragraph blocks dynamically for clean aesthetic layouts
+      let paragraphDiv = document.createElement('p');
+      paragraphDiv.className = 'mb-6 leading-relaxed text-justify indent-4';
+      
+      sentences.forEach((sent, idx) => {
+        // If we hit double newlines in the original text representation, start a new paragraph
+        if (idx > 0 && sentences[idx - 1].includes('\n')) {
+          container.appendChild(paragraphDiv);
+          paragraphDiv = document.createElement('p');
+          paragraphDiv.className = 'mb-6 leading-relaxed text-justify indent-4';
+        }
+        
+        const span = document.createElement('span');
+        span.id = `sentence-${idx}`;
+        span.textContent = sent + " ";
+        span.className = `inline-sentence px-0.5 rounded transition-all cursor-pointer hover:bg-amber-100/60 hover:text-stone-900 py-0.5 ${
+          idx === currentSentenceIndex
+            ? 'bg-amber-100 border-l-2 border-amber-600 pl-1.5 pr-1 font-medium text-stone-900 shadow-xs ring-4 ring-amber-100/30 scale-[1.01]'
+            : 'text-stone-700'
+        }`;
+        
+        span.addEventListener('click', () => {
+          jumpToSentence(idx);
+        });
+        
+        paragraphDiv.appendChild(span);
+      });
+      
+      container.appendChild(paragraphDiv);
+    }
+
+    function jumpToSentence(idx) {
+      stopPlayback();
+      currentSentenceIndex = idx;
+      saveActiveProgress();
+      renderReader();
+      updatePlaybackStatus();
+      scrollToActiveSentence(true);
+    }
+
+    function saveActiveProgress() {
+      if (currentBookIndex === -1 || books.length === 0) return;
+      const activeBook = books[currentBookIndex];
+      try {
+        const progressMapStr = localStorage.getItem('ebook_tts_progress') || "{}";
+        const progressMap = JSON.parse(progressMapStr);
+        progressMap[activeBook.id] = currentSentenceIndex;
+        localStorage.setItem('ebook_tts_progress', JSON.stringify(progressMap));
+      } catch (e) {
+        console.error("Failed to save progress", e);
+      }
+    }
+
+    function scrollToActiveSentence(smooth = true) {
+      const activeEl = document.getElementById(`sentence-${currentSentenceIndex}`);
+      if (activeEl) {
+        activeEl.scrollIntoView({
+          behavior: smooth ? 'smooth' : 'auto',
+          block: 'center'
+        });
+      }
+    }
+
+    function updatePlaybackStatus() {
+      const label = document.getElementById('playback-sentence-status');
+      if (sentences.length === 0) {
+        label.textContent = "No eBook open";
+        return;
+      }
+      
+      const percent = Math.round((currentSentenceIndex / sentences.length) * 100);
+      label.textContent = `Sentence ${currentSentenceIndex + 1} of ${sentences.length} (${percent}%)`;
+    }
+
+    // --- UPLOAD & PARSING IMPLEMENTATION ---
+    function setupDropzone() {
+      const dropzone = document.getElementById('dropzone');
+      const input = document.getElementById('file-input');
+      
+      ['dragenter', 'dragover'].forEach(name => {
+        dropzone.addEventListener(name, (e) => {
+          e.preventDefault();
+          dropzone.classList.add('border-amber-700', 'bg-amber-50/20');
+        }, false);
+      });
+      
+      ['dragleave', 'drop'].forEach(name => {
+        dropzone.addEventListener(name, (e) => {
+          e.preventDefault();
+          dropzone.classList.remove('border-amber-700', 'bg-amber-50/20');
+        }, false);
+      });
+      
+      dropzone.addEventListener('drop', (e) => {
+        const file = e.dataTransfer.files[0];
+        if (file) handleUpload(file);
+      });
+      
+      input.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) handleUpload(file);
+      });
+    }
+
+    async function handleUpload(file) {
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (ext !== 'epub' && ext !== 'pdf') {
+        showToast("Only standard .epub and .pdf eBook files are supported.", "error");
+        return;
+      }
+      
+      toggleLoading(true);
+      updateLoadingProgress(5, "Reading file stream...");
+      
+      try {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            const buffer = e.target.result;
+            let combinedText = '';
+            
+            if (ext === 'pdf') {
+              combinedText = await localParsePdf(buffer);
+            } else {
+              combinedText = await localParseEpub(buffer);
+            }
+            
+            if (!combinedText || combinedText.trim().length === 0) {
+              throw new Error("No readable text content extracted from file.");
+            }
+            
+            const newBook = {
+              id: Date.now().toString(),
+              title: file.name.replace(/\.[^/.]+$/, ""),
+              fileType: ext,
+              chapters: [{ id: "full-content", title: "Book Content", text: combinedText }],
+              currentChapterIndex: 0
+            };
+            
+            books.push(newBook);
+            currentBookIndex = books.length - 1;
+            
+            saveBooksToStorage();
+            renderBooks();
+            loadActiveBookContent();
+            
+            toggleLoading(false);
+            showToast(`Parsed "${newBook.title}" successfully!`, "success");
+          } catch (err) {
+            console.error(err);
+            toggleLoading(false);
+            showToast(`Failed to parse eBook: ${err.message}`, "error");
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      } catch (err) {
+        toggleLoading(false);
+        showToast(`Failed to load file: ${err.message}`, "error");
+      }
+    }
+
+    function toggleLoading(show) {
+      const overlay = document.getElementById('loading-overlay');
+      if (show) {
+        overlay.classList.remove('hidden');
+      } else {
+        overlay.classList.add('hidden');
+      }
+    }
+
+    function updateLoadingProgress(percent, label) {
+      document.getElementById('loading-progress-bar').style.width = percent + '%';
+      document.getElementById('loading-progress-text').textContent = percent + '%';
+    }
+
+    // --- LOCAL PDF PARSER ---
+    async function localParsePdf(fileBuffer) {
+      if (typeof pdfjsLib === "undefined") {
+        throw new Error("PDF.js library failed to load. Check internet.");
+      }
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      const loadingTask = pdfjsLib.getDocument({ data: fileBuffer });
+      const pdf = await loadingTask.promise;
+      const totalPages = pdf.numPages;
+      let combinedText = "";
+      
+      for (let i = 1; i <= totalPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        let lastY = -1;
+        let pageText = "";
+        
+        for (const item of textContent.items) {
+          if (item.str) {
+            if (lastY !== -1 && Math.abs(item.transform[5] - lastY) > 5) {
+              pageText += "\n";
+            } else if (pageText && !pageText.endsWith("\n") && !pageText.endsWith(" ")) {
+              pageText += " ";
+            }
+            pageText += item.str;
+            lastY = item.transform[5];
+          }
+        }
+        const trimmed = pageText.trim();
+        if (trimmed) {
+          combinedText += trimmed + "\n\n";
+        }
+        updateLoadingProgress(Math.round((i / totalPages) * 100), `Reading page ${i}...`);
+      }
+      return combinedText;
+    }
+
+    // --- LOCAL EPUB PARSER ---
+    async function localParseEpub(fileBuffer) {
+      if (typeof JSZip === "undefined") {
+        throw new Error("JSZip failed to load. Check internet.");
+      }
+      const zip = await JSZip.loadAsync(fileBuffer);
+      const containerFile = zip.file("META-INF/container.xml");
+      if (!containerFile) throw new Error("Invalid EPUB: missing META-INF/container.xml");
+      
+      const containerStr = await containerFile.async("string");
+      const containerDoc = (new DOMParser()).parseFromString(containerStr, "text/xml");
+      const rootfile = containerDoc.querySelector("rootfile");
+      if (!rootfile) throw new Error("Invalid container.xml structure");
+      
+      const opfPath = rootfile.getAttribute("full-path");
+      const baseDir = opfPath.includes("/") ? opfPath.substring(0, opfPath.lastIndexOf("/") + 1) : "";
+      
+      const opfFile = zip.file(opfPath);
+      if (!opfFile) throw new Error("OPF manifest file missing in zip package.");
+      
+      const opfStr = await opfFile.async("string");
+      const opfDoc = (new DOMParser()).parseFromString(opfStr, "text/xml");
+      
+      const manifestItems = opfDoc.querySelectorAll("manifest > item");
+      const manifestMap = new Map();
+      manifestItems.forEach(item => {
+        const id = item.getAttribute("id");
+        const href = item.getAttribute("href");
+        if (id && href) manifestMap.set(id, decodeURIComponent(href));
+      });
+      
+      const spineItems = opfDoc.querySelectorAll("spine > itemref");
+      let combinedText = "";
+      const totalSpine = spineItems.length;
+      
+      for (let i = 0; i < totalSpine; i++) {
+        const idref = spineItems[i].getAttribute("idref");
+        const href = manifestMap.get(idref);
+        if (!href) continue;
+        
+        let fullPath = baseDir + href;
+        if (fullPath.includes("../")) {
+          const parts = fullPath.split("/");
+          const stack = [];
+          for (const p of parts) {
+            if (p === "..") stack.pop();
+            else if (p !== ".") stack.push(p);
+          }
+          fullPath = stack.join("/");
+        }
+        
+        let file = zip.file(fullPath);
+        if (!file) {
+          const pathNoHash = fullPath.split("#")[0];
+          file = zip.file(pathNoHash);
+        }
+        if (!file) continue;
+        
+        const htmlStr = await file.async("string");
+        const cleanedStr = parseHtmlContent(htmlStr);
+        if (cleanedStr) {
+          combinedText += cleanedStr + "\n\n";
+        }
+        
+        updateLoadingProgress(Math.round(((i + 1) / totalSpine) * 100), `Parsing spine ${i + 1}...`);
+      }
+      
+      return combinedText;
+    }
+
+    function parseHtmlContent(htmlStr) {
+      const doc = (new DOMParser()).parseFromString(htmlStr, "text/html");
+      doc.querySelectorAll("script, style, iframe, noscript").forEach(el => el.remove());
+      
+      const paras = doc.querySelectorAll("p, div, li, h1, h2, h3, h4, blockquote");
+      let output = "";
+      if (paras.length > 0) {
+        paras.forEach(p => {
+          const txt = p.textContent ? p.textContent.trim() : "";
+          if (txt.length > 0 && !output.endsWith(txt)) {
+            output += txt + "\n\n";
+          }
+        });
+      } else {
+        output = doc.body ? doc.body.textContent || "" : "";
+      }
+      return output.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+    }
+
+    // --- AUDIO CONTROL & TTS ENGINES ---
+    function togglePlay() {
+      if (sentences.length === 0) return;
+      if (isPlaying) {
+        pausePlayback();
+      } else {
+        startPlayback();
+      }
+    }
+
+    function startPlayback() {
+      if (sentences.length === 0) return;
+      isPlaying = true;
+      document.getElementById('play-icon').setAttribute('data-lucide', 'pause');
+      document.getElementById('play-icon').classList.remove('ml-0.5');
+      lucide.createIcons();
+      
+      playCurrentSentence();
+    }
+
+    function pausePlayback() {
+      isPlaying = false;
+      document.getElementById('play-icon').setAttribute('data-lucide', 'play');
+      document.getElementById('play-icon').classList.add('ml-0.5');
+      lucide.createIcons();
+      
+      if (audioEngine === 'gemini') {
+        ttsAudioElement.pause();
+      } else {
+        if (typeof window !== "undefined" && window.speechSynthesis) {
+          window.speechSynthesis.cancel();
+        }
+      }
+    }
+
+    function stopPlayback() {
+      pausePlayback();
+    }
+
+    function playNext() {
+      if (currentSentenceIndex < sentences.length - 1) {
+        jumpToSentence(currentSentenceIndex + 1);
+        if (isPlaying) playCurrentSentence();
+      } else {
+        stopPlayback();
+        showToast("Reached end of book", "success");
+      }
+    }
+
+    function playPrev() {
+      if (currentSentenceIndex > 0) {
+        jumpToSentence(currentSentenceIndex - 1);
+        if (isPlaying) playCurrentSentence();
+      }
+    }
+
+    async function playCurrentSentence() {
+      if (!isPlaying || sentences.length === 0) return;
+      
+      const txt = sentences[currentSentenceIndex];
+      updatePlaybackStatus();
+      scrollToActiveSentence();
+      
+      if (audioEngine === 'gemini') {
+        await playGeminiTts(txt);
+      } else {
+        playBrowserTts(txt);
+      }
+    }
+
+    // --- BROWSER LOCAL TEXT TO SPEECH ---
+    function playBrowserTts(text) {
+      if (typeof window === "undefined" || !window.speechSynthesis) {
+        showToast("Speech synthesis not supported in this browser.", "error");
+        stopPlayback();
+        return;
+      }
+      
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      
+      if (selectedVoice !== '' && browserVoices[parseInt(selectedVoice, 10)]) {
+        utterance.voice = browserVoices[parseInt(selectedVoice, 10)];
+      }
+      
+      utterance.rate = playbackSpeed;
+      
+      utterance.onend = () => {
+        if (isPlaying) {
+          setTimeout(playNext, 100);
+        }
+      };
+      
+      utterance.onerror = (e) => {
+        console.error("Local TTS Error", e);
+        if (e.error === "interrupted" || e.error === "canceled") return;
+        stopPlayback();
+        showToast(`Browser TTS Error: ${e.error || 'unknown'}. Try Gemini Cloud TTS or open in a new tab.`, "error");
+      };
+      
+      window.speechSynthesis.speak(utterance);
+    }
+
+    // --- DIRECT CLIENT-SIDE GEMINI CLOUD TTS ---
+    async function playGeminiTts(text) {
+      const apiKey = localStorage.getItem('gemini_api_key');
+      if (!apiKey) {
+        stopPlayback();
+        toggleKeyModal(true);
+        showToast("Gemini Cloud TTS requires an API Key. Please input your key.", "error");
+        return;
+      }
+      
+      // Clean up past runs
+      ttsAudioElement.pause();
+      ttsAudioElement.onended = null;
+      
+      try {
+        isGeneratingAudio = true;
+        document.getElementById('playback-sentence-status').textContent = "Generating high-quality Gemini voice...";
+        
+        const payload = {
+          contents: [{ parts: [{ text: text }] }],
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: selectedVoice || 'Kore' }
+              }
+            }
+          }
+        };
+        
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent?key=${apiKey}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+        
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error?.message || `HTTP ${response.status}`);
+        }
+        
+        const resData = await response.json();
+        const base64Audio = resData.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (!base64Audio) {
+          throw new Error("No audio payload returned from Gemini API. Double check key and quota.");
+        }
+        
+        // Convert base64 to pcm Uint8Array
+        const rawBin = window.atob(base64Audio);
+        const pcmArr = new Uint8Array(rawBin.length);
+        for (let i = 0; i < rawBin.length; i++) {
+          pcmArr[i] = rawBin.charCodeAt(i);
+        }
+        
+        // Add standard wav header
+        const wavHeaderBuffer = addWavHeader(pcmArr, 24000);
+        const audioBlob = new Blob([wavHeaderBuffer], { type: 'audio/wav' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        isGeneratingAudio = false;
+        updatePlaybackStatus();
+        
+        if (!isPlaying) return; // safeguard if paused during fetch
+        
+        ttsAudioElement.src = audioUrl;
+        ttsAudioElement.playbackRate = playbackSpeed;
+        ttsAudioElement.onended = () => {
+          if (isPlaying) {
+            setTimeout(playNext, 100);
+          }
+        };
+        ttsAudioElement.play().catch(e => {
+          console.error("Audio playback interrupted", e);
+        });
+        
+      } catch (e) {
+        console.error(e);
+        isGeneratingAudio = false;
+        stopPlayback();
+        updatePlaybackStatus();
+        showToast(`Gemini TTS failed: ${e.message}. Using Browser TTS instead.`, "error");
+        
+        // Soft fallback to browser local
+        audioEngine = 'browser';
+        localStorage.setItem('ebook_tts_engine', 'browser');
+        syncToggles();
+        startPlayback();
+      }
+    }
+
+    // --- CLIENT-SIDE WAV HEADER GEN ---
+    function addWavHeader(pcmData, sampleRate) {
+      const numChannels = 1;
+      const bitsPerSample = 16;
+      const blockAlign = numChannels * (bitsPerSample / 8);
+      const byteRate = sampleRate * blockAlign;
+      const dataSize = pcmData.length;
+      const chunkSize = 36 + dataSize;
+
+      const buffer = new ArrayBuffer(44 + dataSize);
+      const view = new DataView(buffer);
+
+      view.setUint32(0, 0x52494646, false); // "RIFF"
+      view.setUint32(4, chunkSize, true);
+      view.setUint32(8, 0x57415645, false); // "WAVE"
+      view.setUint32(12, 0x666d7420, false); // "fmt "
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, numChannels, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, byteRate, true);
+      view.setUint16(32, blockAlign, true);
+      view.setUint16(34, bitsPerSample, true);
+      view.setUint32(36, 0x64617461, false); // "data"
+      view.setUint32(40, dataSize, true);
+
+      const uint8View = new Uint8Array(buffer);
+      uint8View.set(pcmData, 44);
+
+      return buffer;
+    }
+
+    // --- KEY CONFIGURATION MODAL ---
+    function toggleKeyModal(show) {
+      const modal = document.getElementById('key-modal');
+      const input = document.getElementById('api-key-input');
+      
+      if (show) {
+        modal.classList.remove('hidden');
+        input.value = localStorage.getItem('gemini_api_key') || '';
+      } else {
+        modal.classList.add('hidden');
+      }
+    }
+
+    function saveApiKey() {
+      const key = document.getElementById('api-key-input').value.trim();
+      if (!key) {
+        clearApiKey();
+        return;
+      }
+      localStorage.setItem('gemini_api_key', key);
+      updateApiKeyIndicator();
+      toggleKeyModal(false);
+      showToast("Gemini API Key saved securely!", "success");
+    }
+
+    function clearApiKey() {
+      localStorage.removeItem('gemini_api_key');
+      updateApiKeyIndicator();
+      toggleKeyModal(false);
+      showToast("Gemini API Key cleared", "info");
+    }
+
+    function updateApiKeyIndicator() {
+      const key = localStorage.getItem('gemini_api_key');
+      const dot = document.getElementById('key-dot');
+      const label = document.getElementById('key-label');
+      
+      if (key) {
+        dot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
+        label.textContent = "Gemini Key Configured";
+      } else {
+        dot.className = "w-2 h-2 rounded-full bg-amber-500";
+        label.textContent = "Set Gemini API Key";
+      }
+    }
+  </script>
+</body>
+</html>
